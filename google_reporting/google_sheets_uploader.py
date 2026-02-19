@@ -116,7 +116,7 @@ def build_template_batch_updates(spreadsheet_id: str, mapping: dict) -> list:
             "values": vals,
         })
 
-    # 2. 2. Profiles: C4=C5 SAML (if present); B16:H* = profile rows (Name, User License, Profile Type, Active, Modify All, Run Reports, Export Reports)
+    # 2. 2. Profiles: C4:C5 SAML (if present); A16:F* = profile rows (Profile, User License, Number Of Users, Modify All Data, Run Reports, Export Reports)
     saml_enabled = mapping.get("saml_enabled")
     saml_setting_names = mapping.get("saml_setting_names")
     if saml_enabled is not None or saml_setting_names is not None:
@@ -129,7 +129,7 @@ def build_template_batch_updates(spreadsheet_id: str, mapping: dict) -> list:
     profiles = mapping.get("profiles") or []
     if profiles:
         updates.append({
-            "range": "{}!B16:H{}".format(_quote_sheet("2. Profiles"), 15 + len(profiles)),
+            "range": "{}!A16:F{}".format(_quote_sheet("2. Profiles"), 15 + len(profiles)),
             "values": profiles,
         })
 
@@ -257,7 +257,7 @@ def apply_arial9_format(sheets_service, spreadsheet_id: str, mapping: dict) -> N
         ranges_from_mapping.append(("2. Profiles", 4, 2, 6, 3))  # C4:C5
     profiles = mapping.get("profiles") or []
     if profiles:
-        ranges_from_mapping.append(("2. Profiles", 16, 1, 15 + len(profiles), 8))  # B16:H*
+        ranges_from_mapping.append(("2. Profiles", 16, 0, 15 + len(profiles), 6))  # A16:F*
     if mapping.get("health_check_score"):
         ranges_from_mapping.append(("3. Health Check", 4, 2, 4, 3))  # C4
     health = mapping.get("health_check_2") or []

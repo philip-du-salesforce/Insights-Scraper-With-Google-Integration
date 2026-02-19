@@ -410,12 +410,11 @@ class ProfilesModule extends BaseModule {
     output += `Generated: ${new Date().toLocaleString()}\n`;
     output += '\n';
 
-    output += 'Profile Name\tUser License\tProfile Type\tActive Users\tModify All Data\tRun Reports\tExport Reports\n';
+    output += 'Profile Name\tUser License\tActive Users\tModify All Data\tRun Reports\tExport Reports\n';
 
     data.forEach(profile => {
       output += `${profile.profileName || 'N/A'}\t`;
       output += `${profile.userLicense || 'Unknown'}\t`;
-      output += `${profile.profileType || 'Unknown'}\t`;
       output += `${profile.activeUserCount ?? 0}\t`;
       output += `${profile.modifyAllData ? 'Yes' : 'No'}\t`;
       output += `${profile.runReports ? 'Yes' : 'No'}\t`;

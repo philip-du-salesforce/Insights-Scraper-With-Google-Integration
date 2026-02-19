@@ -53,7 +53,7 @@ class SheetMapper:
 
     @staticmethod
     def profiles_from_json(module_data: dict) -> List[List[str]]:
-        """2. Profiles: B16:H* = Profile Name, User License, Profile Type, Active Users, Modify All, Run Reports, Export Reports."""
+        """2. Profiles: A16:F* = Profile Name, User License, Number Of Users, Modify All Data, Run Reports, Export Reports (no Profile Type)."""
         data = module_data.get("2_profiles") or {}
         profiles = data.get("profiles") if isinstance(data.get("profiles"), list) else []
         rows = []
@@ -62,12 +62,11 @@ class SheetMapper:
                 continue
             name = _safe(p.get("profileName"))
             license_ = _safe(p.get("userLicense"))
-            ptype = _safe(p.get("profileType"))
             active = _safe_int(p.get("activeUserCount"), 0)
             modify = "Yes" if p.get("modifyAllData") else "No"
             run = "Yes" if p.get("runReports") else "No"
             export = "Yes" if p.get("exportReports") else "No"
-            rows.append([name, license_, ptype, active, modify, run, export])
+            rows.append([name, license_, active, modify, run, export])
         return rows
 
     @staticmethod

@@ -179,7 +179,7 @@ def parse_overview_from_files(parsed: dict) -> List[str]:
 def parse_profiles_for_template(parsed: dict) -> List[List[str]]:
     """
     Parse 2_profiles.txt for sheet '2. Profiles'.
-    Columns: Profile Name, User License, Profile Type, Active Users, Modify All Data, Run Reports, Export Reports (7 cols).
+    Columns: Profile Name, User License, Active Users, Modify All Data, Run Reports, Export Reports (6 cols; no Profile Type).
     """
     rows = []
     data = parsed.get("module_data", {}).get("2_profiles")
@@ -199,20 +199,18 @@ def parse_profiles_for_template(parsed: dict) -> List[List[str]]:
             if has_user_license_col and len(r) >= 7:
                 profile_name = _safe_cell(r[0]) if len(r) > 0 else ""
                 user_license = _safe_cell(r[1]) if len(r) > 1 else ""
-                profile_type = _safe_cell(r[2]) if len(r) > 2 else ""
                 active_users = _safe_cell(r[3]) if len(r) > 3 else "0"
                 modify_all = _safe_cell(r[4]) if len(r) > 4 else ""
                 run_reports = _safe_cell(r[5]) if len(r) > 5 else ""
                 export_reports = _safe_cell(r[6]) if len(r) > 6 else ""
             else:
                 profile_name = _safe_cell(r[0]) if len(r) > 0 else ""
-                user_license = ""
-                profile_type = _safe_cell(r[1]) if len(r) > 1 else ""
+                user_license = _safe_cell(r[1]) if len(r) > 1 else ""
                 active_users = _safe_cell(r[2]) if len(r) > 2 else "0"
                 modify_all = _safe_cell(r[3]) if len(r) > 3 else ""
                 run_reports = _safe_cell(r[4]) if len(r) > 4 else ""
                 export_reports = _safe_cell(r[5]) if len(r) > 5 else ""
-            rows.append([profile_name, user_license, profile_type, active_users, modify_all, run_reports, export_reports])
+            rows.append([profile_name, user_license, active_users, modify_all, run_reports, export_reports])
     return rows
 
 
