@@ -116,7 +116,7 @@ def build_template_batch_updates(spreadsheet_id: str, mapping: dict) -> list:
             "values": vals,
         })
 
-    # 2. 2. Profiles: C4:C5 SAML (if present); A16:F* = profile rows (Profile, User License, Number Of Users, Modify All Data, Run Reports, Export Reports)
+    # 2. 2. Profiles: C4:C5 SAML (if present); B16:G* = profile rows (B=Profile, C=User License, D=Number Of Users, E=Modify All Data, F=Run Reports, G=Export Reports)
     saml_enabled = mapping.get("saml_enabled")
     saml_setting_names = mapping.get("saml_setting_names")
     if saml_enabled is not None or saml_setting_names is not None:
@@ -129,7 +129,7 @@ def build_template_batch_updates(spreadsheet_id: str, mapping: dict) -> list:
     profiles = mapping.get("profiles") or []
     if profiles:
         updates.append({
-            "range": "{}!A16:F{}".format(_quote_sheet("2. Profiles"), 15 + len(profiles)),
+            "range": "{}!B16:G{}".format(_quote_sheet("2. Profiles"), 15 + len(profiles)),
             "values": profiles,
         })
 
@@ -257,7 +257,7 @@ def apply_arial9_format(sheets_service, spreadsheet_id: str, mapping: dict) -> N
         ranges_from_mapping.append(("2. Profiles", 4, 2, 6, 3))  # C4:C5
     profiles = mapping.get("profiles") or []
     if profiles:
-        ranges_from_mapping.append(("2. Profiles", 16, 0, 15 + len(profiles), 6))  # A16:F*
+        ranges_from_mapping.append(("2. Profiles", 16, 1, 15 + len(profiles), 7))  # B16:G*
     if mapping.get("health_check_score"):
         ranges_from_mapping.append(("3. Health Check", 4, 2, 4, 3))  # C4
     health = mapping.get("health_check_2") or []
@@ -339,6 +339,12 @@ def main():
         action="store_true",
         help="Do not apply Arial size 9 to written cells (only write values)",
     )
+    parser.add_argument(
+        "--share-with",
+        type=str,
+        default=None,
+        help="Comma-separated list of extra emails to share the report with (as Editor)",
+    )
     args = parser.parse_args()
 
     try:
@@ -379,6 +385,12 @@ def main():
 
     print(f"Sharing with {config.SHARE_EMAIL} as Editor...")
     share_with_email(drive_service, new_file_id, config.SHARE_EMAIL, role="writer")
+    extra_emails = []
+    if getattr(args, "share_with", None) and args.share_with.strip():
+        extra_emails = [e.strip() for e in args.share_with.split(",") if e.strip()]
+    for email in extra_emails:
+        print(f"Sharing with {email} as Editor...")
+        share_with_email(drive_service, new_file_id, email, role="writer")
     print("Sharing done.")
 
     print("Writing data to template sheets (batchUpdate)...")

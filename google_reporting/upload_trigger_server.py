@@ -44,13 +44,16 @@ def resolve_folder_path(folder_name: str) -> Optional[Path]:
     return None
 
 
-def run_uploader(folder_path: Path) -> Tuple[bool, str, Optional[str]]:
-    """Run google_sheets_uploader.py for the given folder. Returns (success, message, spreadsheet_url)."""
+def run_uploader(folder_path: Path, share_emails: Optional[list] = None) -> Tuple[bool, str, Optional[str]]:
+    """Run google_sheets_uploader.py for the given folder. Optionally share with extra emails. Returns (success, message, spreadsheet_url)."""
     if not UPLOADER_SCRIPT.exists():
         return False, "Uploader script not found", None
+    cmd = [sys.executable, str(UPLOADER_SCRIPT), str(folder_path)]
+    if share_emails:
+        cmd.extend(["--share-with", ",".join(str(e).strip() for e in share_emails if e)])
     try:
         result = subprocess.run(
-            [sys.executable, str(UPLOADER_SCRIPT), str(folder_path)],
+            cmd,
             cwd=str(SCRIPT_DIR),
             capture_output=True,
             text=True,
@@ -90,6 +93,7 @@ class UploadHandler(BaseHTTPRequestHandler):
             self._send(404, {"success": False, "message": "Not found"})
             return
         folder_name = None
+        share_with = []
         if "content-length" in self.headers:
             length = int(self.headers["content-length"])
             if length:
@@ -97,14 +101,17 @@ class UploadHandler(BaseHTTPRequestHandler):
                 try:
                     data = json.loads(body)
                     folder_name = data.get("folder") or data.get("folderName")
+                    share_with = data.get("shareWith") or []
+                    if not isinstance(share_with, list):
+                        share_with = [share_with] if share_with else []
                 except Exception:
                     pass
         if not folder_name and self.path.startswith("/upload?"):
             qs = parse_qs(urlparse(self.path).query)
             folder_name = (qs.get("folder") or [""])[0]
-        self._handle_upload(folder_name or "")
+        self._handle_upload(folder_name or "", share_emails=share_with)
 
-    def _handle_upload(self, folder_name: str):
+    def _handle_upload(self, folder_name: str, share_emails: Optional[list] = None):
         folder_path = resolve_folder_path(folder_name)
         if not folder_path:
             self._send(400, {
@@ -112,7 +119,7 @@ class UploadHandler(BaseHTTPRequestHandler):
                 "message": f"Folder not found: {folder_name!r}. Check Desktop and Downloads.",
             })
             return
-        success, message, url = run_uploader(folder_path)
+        success, message, url = run_uploader(folder_path, share_emails=share_emails)
         self._send(200, {
             "success": success,
             "message": message,

@@ -53,7 +53,7 @@ class SheetMapper:
 
     @staticmethod
     def profiles_from_json(module_data: dict) -> List[List[str]]:
-        """2. Profiles: A16:F* = Profile Name, User License, Number Of Users, Modify All Data, Run Reports, Export Reports (no Profile Type)."""
+        """2. Profiles: B16:G* = Profile (B), User License (C), Number Of Users (D), Modify All Data (E), Run Reports (F), Export Reports (G)."""
         data = module_data.get("2_profiles") or {}
         profiles = data.get("profiles") if isinstance(data.get("profiles"), list) else []
         rows = []

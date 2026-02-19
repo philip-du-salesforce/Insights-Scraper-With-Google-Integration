@@ -373,14 +373,42 @@ selectAllToggle.addEventListener('change', () => {
   });
 });
 
-// Auto-upload checkbox: persist and load
+// Auto-upload checkbox and "Also share with" colleagues
 const autoUploadCheckbox = document.getElementById('auto-upload-sheets');
+const shareColleaguesWrap = document.getElementById('share-colleagues-wrap');
+const shareColleaguesSelect = document.getElementById('share-colleagues');
+
+function setShareColleaguesVisible(visible) {
+  if (shareColleaguesWrap) {
+    shareColleaguesWrap.classList.toggle('hidden', !visible);
+  }
+}
+
+function getSelectedShareEmails() {
+  if (!shareColleaguesSelect) return [];
+  return Array.from(shareColleaguesSelect.selectedOptions).map(opt => opt.value);
+}
+
 if (autoUploadCheckbox) {
-  chrome.storage.local.get(['autoUploadToSheets'], (s) => {
+  chrome.storage.local.get(['autoUploadToSheets', 'shareWithEmails'], (s) => {
     autoUploadCheckbox.checked = s.autoUploadToSheets !== false;
+    setShareColleaguesVisible(autoUploadCheckbox.checked);
+    if (shareColleaguesSelect && Array.isArray(s.shareWithEmails)) {
+      for (let i = 0; i < shareColleaguesSelect.options.length; i++) {
+        shareColleaguesSelect.options[i].selected = s.shareWithEmails.includes(shareColleaguesSelect.options[i].value);
+      }
+    }
   });
   autoUploadCheckbox.addEventListener('change', () => {
-    chrome.storage.local.set({ autoUploadToSheets: autoUploadCheckbox.checked });
+    const checked = autoUploadCheckbox.checked;
+    chrome.storage.local.set({ autoUploadToSheets: checked });
+    setShareColleaguesVisible(checked);
+  });
+}
+
+if (shareColleaguesSelect) {
+  shareColleaguesSelect.addEventListener('change', () => {
+    chrome.storage.local.set({ shareWithEmails: getSelectedShareEmails() });
   });
 }
 

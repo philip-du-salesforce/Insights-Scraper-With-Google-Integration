@@ -84,6 +84,14 @@
           <input type="checkbox" id="auto-upload-sheets" checked>
           <span class="option-label">Auto-upload to Google Sheets when extraction completes</span>
         </label>
+        <div id="share-colleagues-wrap" class="share-colleagues-wrap">
+          <label class="share-colleagues-label">Also share with:</label>
+          <select id="share-colleagues" multiple aria-label="Select colleagues to share the report with">
+            <option value="hormsby@salesforce.com">Hamish Ormsby – hormsby@salesforce.com</option>
+            <option value="lcarrillo@salesforce.com">Leonard Carrillo – lcarrillo@salesforce.com</option>
+          </select>
+          <p class="option-hint">Hold Ctrl/Cmd to select multiple</p>
+        </div>
         <p class="option-hint" id="auto-upload-hint">Keep the trigger server running: <code>python google_reporting/upload_trigger_server.py</code></p>
       </section>
 

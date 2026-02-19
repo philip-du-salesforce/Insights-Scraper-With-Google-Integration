@@ -196,11 +196,18 @@ async function startExtraction(moduleIds, customerName, tabId) {
     });
 
     // Auto-trigger Google Sheets upload if enabled (trigger server must be running)
-    chrome.storage.local.get(['autoUploadToSheets'], (storage) => {
+    chrome.storage.local.get(['autoUploadToSheets', 'shareWithEmails'], (storage) => {
       const enabled = storage.autoUploadToSheets !== false;
       if (!enabled) return;
-      const triggerUrl = `http://127.0.0.1:8765/upload?folder=${encodeURIComponent(folderName)}`;
-      fetch(triggerUrl, { method: 'GET', mode: 'cors' })
+      const shareWith = Array.isArray(storage.shareWithEmails) ? storage.shareWithEmails : [];
+      const triggerUrl = 'http://127.0.0.1:8765/upload';
+      const body = JSON.stringify({ folder: folderName, shareWith });
+      fetch(triggerUrl, {
+        method: 'POST',
+        mode: 'cors',
+        headers: { 'Content-Type': 'application/json' },
+        body
+      })
         .then(res => res.json())
         .then((data) => {
           console.log('[Background] Auto-upload trigger response:', data);
