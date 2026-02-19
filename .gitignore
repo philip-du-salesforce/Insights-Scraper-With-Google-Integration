@@ -1,0 +1,12 @@
+.DS_Store
+*.log
+node_modules/
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Google OAuth (do not commit)
+google_reporting/credentials.json
+google_reporting/token.json

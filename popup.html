@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Salesforce Insights Scraper</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Salesforce Insights Scraper</h1>
+      <p class="subtitle">Comprehensive Data Extraction & Reporting</p>
+    </header>
+    
+    <main>
+      <!-- Customer Name Section -->
+      <section class="customer-section" aria-label="Customer Information">
+        <div class="customer-info">
+          <span class="label">Customer:</span>
+          <span class="customer-name" id="customer-name">Detecting...</span>
+        </div>
+      </section>
+
+      <!-- Module Selection Section -->
+      <section class="modules-section" aria-label="Module Selection">
+        <div class="modules-header">
+          <h3>Select Modules to Extract</h3>
+          <label class="uncheck-all-toggle">
+            <input type="checkbox" id="uncheck-all" checked>
+            <span>Select All</span>
+          </label>
+        </div>
+        <div class="modules-list">
+          <label class="module-item">
+            <input type="checkbox" id="module-licenses" value="licenses" checked>
+            <span class="module-label">1. Scrap Licenses</span>
+          </label>
+          
+          <label class="module-item">
+            <input type="checkbox" id="module-profiles" value="profiles" checked>
+            <span class="module-label">2. Scrap Profiles</span>
+          </label>
+          
+          <label class="module-item">
+            <input type="checkbox" id="module-general-info" value="general-info" checked>
+            <span class="module-label">3. Scrap General Information</span>
+          </label>
+          
+          <label class="module-item">
+            <input type="checkbox" id="module-health-check" value="health-check" checked>
+            <span class="module-label">4. Scrap Health Check</span>
+          </label>
+          
+          <label class="module-item">
+            <input type="checkbox" id="module-storage" value="storage" checked>
+            <span class="module-label">5. Scrap Storage</span>
+          </label>
+          
+          <label class="module-item">
+            <input type="checkbox" id="module-sandboxes" value="sandboxes" checked>
+            <span class="module-label">6. Scrap Sandboxes</span>
+          </label>
+          
+          <label class="module-item">
+            <input type="checkbox" id="module-sharing-settings" value="sharing-settings" checked>
+            <span class="module-label">7. Scrap Sharing Settings</span>
+          </label>
+          
+          <label class="module-item module-disabled">
+            <input type="checkbox" id="module-sensitive-data" value="sensitive-data" disabled>
+            <span class="module-label">8. Scrap Sensitive Data (Coming Soon)</span>
+          </label>
+          
+          <label class="module-item">
+            <input type="checkbox" id="module-login-history" value="login-history" checked>
+            <span class="module-label">9. Download Login History</span>
+          </label>
+        </div>
+      </section>
+
+      <!-- Auto-upload option -->
+      <section class="options-section" aria-label="Options">
+        <label class="option-item">
+          <input type="checkbox" id="auto-upload-sheets" checked>
+          <span class="option-label">Auto-upload to Google Sheets when extraction completes</span>
+        </label>
+        <p class="option-hint" id="auto-upload-hint">Keep the trigger server running: <code>python google_reporting/upload_trigger_server.py</code></p>
+      </section>
+
+      <!-- Status Section -->
+      <section class="status-section" aria-label="Status Information">
+        <div class="status-item">
+          <span class="label">Status:</span>
+          <span class="value" id="status" aria-live="polite">Ready</span>
+        </div>
+      </section>
+
+      <!-- Progress Section -->
+      <section class="progress-section" id="progress-section" style="display: none;" aria-label="Progress">
+        <div class="progress-header">
+          <h3>Extraction Progress</h3>
+          <span id="progress-summary">0/0 completed</span>
+        </div>
+        
+        <!-- Individual module progress bars -->
+        <div class="modules-progress" id="modules-progress"></div>
+      </section>
+
+      <!-- Action Buttons -->
+      <section class="button-section" aria-label="Actions">
+        <button id="extract-data-btn" class="btn btn-primary" aria-label="Run script using selected modules">
+          <span>Run Script</span>
+        </button>
+        <button id="cancel-btn" class="btn btn-danger" style="display: none;" aria-label="Cancel current operation">
+          <span>Cancel</span>
+        </button>
+      </section>
+
+      <!-- Results Section -->
+      <section class="results-section" id="results-section" style="display: none;" aria-label="Extraction Results">
+        <h3>Results</h3>
+        <div id="results-summary" role="region" aria-live="polite"></div>
+      </section>
+
+      <!-- Error Section -->
+      <section class="error-section" id="error-section" style="display: none;" role="alert" aria-live="assertive">
+        <div class="error-message" id="error-message"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
