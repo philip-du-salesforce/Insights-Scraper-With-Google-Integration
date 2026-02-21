@@ -24,8 +24,9 @@ TEMPLATE_SPREADSHEET_ID = os.environ.get("GOOGLE_TEMPLATE_SPREADSHEET_ID") or "1
 # Email to share the new report with (as Editor)
 SHARE_EMAIL = os.environ.get("GOOGLE_REPORT_SHARE_EMAIL") or "philip.du@salesforce.com"
 
-# OAuth scopes
+# OAuth scopes (drive.labels needed to list labels for "Externals Allowed" classification)
 SCOPES = [
     "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/drive.labels",
     "https://www.googleapis.com/auth/spreadsheets",
 ]

@@ -22,9 +22,16 @@ import argparse
 import csv
 import re
 import sys
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+# Suppress Python 3.9 EOL and urllib3/OpenSSL warnings from google-auth and dependencies
+warnings.filterwarnings("ignore", category=FutureWarning, module="google.auth")
+warnings.filterwarnings("ignore", category=FutureWarning, module="google.oauth2")
+warnings.filterwarnings("ignore", category=FutureWarning, module="google.api_core")
+warnings.filterwarnings("ignore", category=UserWarning, module="urllib3")
 
 # Add parent so we can import config and scraper_parser
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -82,6 +89,84 @@ def share_with_email(drive_service, file_id: str, email: str, role: str = "write
         "emailAddress": email,
     }
     drive_service.permissions().create(fileId=file_id, body=body).execute()
+
+
+def discover_externals_allowed_label(drivelabels_service) -> Optional[Dict[str, str]]:
+    """
+    Use Drive Labels API (labels.list with view=LABEL_VIEW_FULL) to find the
+    label/field/choice that corresponds to "Externals Allowed". Returns dict with
+    labelId, fieldId, choiceId or None if not found.
+    """
+    target_choice_display_name = "Externals Allowed"
+    try:
+        page_token = None
+        while True:
+            request_kwargs = {
+                "publishedOnly": True,
+                "view": "LABEL_VIEW_FULL",
+                "pageSize": 200,
+            }
+            if page_token:
+                request_kwargs["pageToken"] = page_token
+            response = drivelabels_service.labels().list(**request_kwargs).execute()
+            for label in response.get("labels", []):
+                label_id = label.get("id")
+                if not label_id:
+                    continue
+                for field in label.get("fields", []):
+                    if "selectionOptions" not in field:
+                        continue
+                    field_id = field.get("id")
+                    if not field_id:
+                        continue
+                    choices = (field.get("selectionOptions") or {}).get("choices", [])
+                    for choice in choices:
+                        props = (choice.get("properties") or {})
+                        display = (props.get("displayName") or "").strip()
+                        if display == target_choice_display_name:
+                            choice_id = choice.get("id")
+                            if choice_id:
+                                return {
+                                    "labelId": label_id,
+                                    "fieldId": field_id,
+                                    "choiceId": choice_id,
+                                }
+            page_token = response.get("nextPageToken")
+            if not page_token:
+                break
+        return None
+    except Exception as e:
+        print(f"Note: Could not discover Externals Allowed label: {e}", file=sys.stderr)
+        return None
+
+
+def set_file_label_to_externals_allowed(
+    drive_service, file_id: str, label_ids: Dict[str, str]
+) -> bool:
+    """
+    Use Drive API files.modifyLabels to set the file's classification to
+    Externals Allowed. label_ids must contain labelId, fieldId, choiceId from
+    discover_externals_allowed_label.
+    """
+    try:
+        body = {
+            "labelModifications": [
+                {
+                    "labelId": label_ids["labelId"],
+                    "fieldModifications": [
+                        {
+                            "fieldId": label_ids["fieldId"],
+                            "setSelectionValues": [label_ids["choiceId"]],
+                        }
+                    ],
+                }
+            ],
+        }
+        drive_service.files().modifyLabels(fileId=file_id, body=body).execute()
+        return True
+    except Exception as e:
+        print(f"Note: Could not set file label to Externals Allowed: {e}", file=sys.stderr)
+        return False
 
 
 def _col_to_letter(n: int) -> str:
@@ -480,6 +565,8 @@ def apply_arial9_format(sheets_service, spreadsheet_id: str, mapping: dict) -> N
 
     requests = []
     for sheet_name, start_row, start_col, end_row, end_col in ranges_from_mapping:
+        if end_row <= start_row or end_col <= start_col:
+            continue
         sid = sheet_name_to_id.get(sheet_name)
         if sid is None:
             continue
@@ -502,14 +589,17 @@ def apply_arial9_format(sheets_service, spreadsheet_id: str, mapping: dict) -> N
                         "verticalAlignment": "CENTER",
                     },
                 },
-                "fields": "userEnteredFormat.textFormat(fontFamily,fontSize),userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment",
+                "fields": "userEnteredFormat(textFormat,horizontalAlignment,verticalAlignment)",
             },
         })
     if requests:
-        sheets_service.spreadsheets().batchUpdate(
-            spreadsheetId=spreadsheet_id,
-            body={"requests": requests},
-        ).execute()
+        try:
+            sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body={"requests": requests},
+            ).execute()
+        except Exception as e:
+            print(f"Note: Arial/alignment format could not be applied: {e}", file=sys.stderr)
 
 
 def main():
@@ -642,6 +732,18 @@ def main():
         spreadsheet_id_path.write_text(new_file_id, encoding="utf-8")
     except Exception:
         pass
+
+    # Set Google Workspace data classification label to "Externals Allowed"
+    try:
+        drivelabels_service = build("drivelabels", "v2beta", credentials=creds)
+        label_ids = discover_externals_allowed_label(drivelabels_service)
+        if label_ids:
+            if set_file_label_to_externals_allowed(drive_service, new_file_id, label_ids):
+                print("Set file label to Externals Allowed.")
+        else:
+            print("Note: Externals Allowed label not found in organization; skipping label update.")
+    except Exception as label_err:
+        print(f"Note: Could not set classification label: {label_err}", file=sys.stderr)
 
     print(f"Sharing with {config.SHARE_EMAIL} as Editor...")
     share_with_email(drive_service, new_file_id, config.SHARE_EMAIL, role="writer")

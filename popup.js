@@ -386,10 +386,10 @@ selectAllToggle.addEventListener('change', () => {
   });
 });
 
-// Auto-upload checkbox and "Also share with" colleagues
+// Auto-upload checkbox and "Also share with" colleagues (checkboxes)
 const autoUploadCheckbox = document.getElementById('auto-upload-sheets');
 const shareColleaguesWrap = document.getElementById('share-colleagues-wrap');
-const shareColleaguesSelect = document.getElementById('share-colleagues');
+const shareColleaguesList = document.getElementById('share-colleagues-list');
 
 function setShareColleaguesVisible(visible) {
   if (shareColleaguesWrap) {
@@ -398,18 +398,19 @@ function setShareColleaguesVisible(visible) {
 }
 
 function getSelectedShareEmails() {
-  if (!shareColleaguesSelect) return [];
-  return Array.from(shareColleaguesSelect.selectedOptions).map(opt => opt.value);
+  if (!shareColleaguesList) return [];
+  return Array.from(shareColleaguesList.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
 }
 
 if (autoUploadCheckbox) {
   chrome.storage.local.get(['autoUploadToSheets', 'shareWithEmails'], (s) => {
     autoUploadCheckbox.checked = s.autoUploadToSheets !== false;
     setShareColleaguesVisible(autoUploadCheckbox.checked);
-    if (shareColleaguesSelect && Array.isArray(s.shareWithEmails)) {
-      for (let i = 0; i < shareColleaguesSelect.options.length; i++) {
-        shareColleaguesSelect.options[i].selected = s.shareWithEmails.includes(shareColleaguesSelect.options[i].value);
-      }
+    const stored = Array.isArray(s.shareWithEmails) ? s.shareWithEmails : [];
+    if (shareColleaguesList) {
+      shareColleaguesList.querySelectorAll('input[name="share-colleague"]').forEach(cb => {
+        cb.checked = stored.includes(cb.value);
+      });
     }
   });
   autoUploadCheckbox.addEventListener('change', () => {
@@ -419,8 +420,8 @@ if (autoUploadCheckbox) {
   });
 }
 
-if (shareColleaguesSelect) {
-  shareColleaguesSelect.addEventListener('change', () => {
+if (shareColleaguesList) {
+  shareColleaguesList.addEventListener('change', () => {
     chrome.storage.local.set({ shareWithEmails: getSelectedShareEmails() });
   });
 }

@@ -78,21 +78,31 @@
         </div>
       </section>
 
-      <!-- Auto-upload option -->
-      <section class="options-section" aria-label="Options">
-        <label class="option-item">
-          <input type="checkbox" id="auto-upload-sheets" checked>
-          <span class="option-label">Auto-upload to Google Sheets when extraction completes</span>
-        </label>
-        <div id="share-colleagues-wrap" class="share-colleagues-wrap">
-          <label class="share-colleagues-label">Also share with:</label>
-          <select id="share-colleagues" multiple aria-label="Select colleagues to share the report with">
-            <option value="hormsby@salesforce.com">Hamish Ormsby – hormsby@salesforce.com</option>
-            <option value="lcarrillo@salesforce.com">Leonard Carrillo – lcarrillo@salesforce.com</option>
-          </select>
-          <p class="option-hint">Hold Ctrl/Cmd to select multiple</p>
+      <!-- Google Sheets Upload (tile consistent with modules) -->
+      <section class="options-section" aria-label="Google Sheets Upload">
+        <div class="options-header">
+          <h3>Google Sheets Upload</h3>
         </div>
-        <p class="option-hint" id="auto-upload-hint">Keep the trigger server running: <code>python google_reporting/upload_trigger_server.py</code></p>
+        <div class="options-tile">
+          <label class="option-item">
+            <input type="checkbox" id="auto-upload-sheets" checked>
+            <span class="option-label">Auto-upload to Google Sheets when extraction completes</span>
+          </label>
+          <div id="share-colleagues-wrap" class="share-colleagues-wrap">
+            <span class="share-colleagues-label">Also share with:</span>
+            <div id="share-colleagues-list" class="share-colleagues-list" role="group" aria-label="Select colleagues to share the report with">
+              <label class="share-colleague-item">
+                <input type="checkbox" name="share-colleague" value="hormsby@salesforce.com">
+                <span class="share-colleague-label">Hamish Ormsby – hormsby@salesforce.com</span>
+              </label>
+              <label class="share-colleague-item">
+                <input type="checkbox" name="share-colleague" value="lcarrillo@salesforce.com">
+                <span class="share-colleague-label">Leonard Carrillo – lcarrillo@salesforce.com</span>
+              </label>
+            </div>
+          </div>
+          <p class="option-hint" id="auto-upload-hint">Keep the trigger server running: <code>python google_reporting/upload_trigger_server.py</code></p>
+        </div>
       </section>
 
       <!-- Status Section -->
