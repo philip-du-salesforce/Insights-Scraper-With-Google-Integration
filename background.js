@@ -85,7 +85,7 @@ async function startExtraction(moduleIds, customerName, tabId) {
     // Enable selected modules
     moduleManager.enableModules(moduleIds);
 
-    const folderName = `${sanitizeFilename(customerName)}_${getCurrentDate()}`;
+    const folderName = `${sanitizeFilename(customerName.replace(/_/g, ' '))}_${getCurrentDate()}`;
     let completedCount = 0;
     const totalModules = moduleIds.length;
 
@@ -352,10 +352,10 @@ function delay(ms) {
 }
 
 /**
- * Sanitize filename (remove invalid characters)
+ * Sanitize folder/filename: keep spaces, remove only invalid path characters
  */
 function sanitizeFilename(name) {
-  return name.replace(/[^a-zA-Z0-9-_]/g, '_');
+  return String(name).replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim().replace(/_+/g, '_') || 'Unknown_Customer';
 }
 
 /**

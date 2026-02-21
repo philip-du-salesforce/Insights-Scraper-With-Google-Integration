@@ -425,8 +425,8 @@ def apply_template_updates(sheets_service, spreadsheet_id: str, mapping: dict) -
 
 def apply_arial9_format(sheets_service, spreadsheet_id: str, mapping: dict) -> None:
     """
-    Apply Arial font size 9 to the ranges we wrote, without changing fill or borders.
-    Uses repeatCell with userEnteredFormat.textFormat only so existing colors/lines are preserved.
+    Apply Arial font size 9 and center alignment to all uploaded data ranges.
+    Uses repeatCell with textFormat and horizontal/vertical alignment; preserves fill and borders.
     """
     # Resolve sheet names to sheetId for GridRange (required for repeatCell)
     meta = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
@@ -498,9 +498,11 @@ def apply_arial9_format(sheets_service, spreadsheet_id: str, mapping: dict) -> N
                             "fontFamily": "Arial",
                             "fontSize": 9,
                         },
+                        "horizontalAlignment": "CENTER",
+                        "verticalAlignment": "CENTER",
                     },
                 },
-                "fields": "userEnteredFormat.textFormat(fontFamily,fontSize)",
+                "fields": "userEnteredFormat.textFormat(fontFamily,fontSize),userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment",
             },
         })
     if requests:
@@ -576,6 +578,8 @@ def main():
         drive_service = build("drive", "v3", credentials=creds)
         try:
             apply_template_updates(sheets_service, spreadsheet_id, mapping)
+            if not getattr(args, "no_format", False):
+                apply_arial9_format(sheets_service, spreadsheet_id, mapping)
             print("Login data updated.")
             try:
                 insert_chart_images(sheets_service, drive_service, spreadsheet_id, folder_path)
@@ -617,7 +621,9 @@ def main():
         return
 
     now = datetime.now()
-    report_title = f"{customer_name} Security and Storage Report - {now.strftime('%B')} {now.year}"
+    # Use customer name with spaces for the spreadsheet title (folder name uses underscores)
+    display_name = customer_name.replace("_", " ")
+    report_title = f"{display_name} Security and Storage Report - {now.strftime('%B')} {now.year}"
 
     try:
         creds = get_credentials()
@@ -650,7 +656,7 @@ def main():
     print("Writing data to template sheets (batchUpdate)...")
     apply_template_updates(sheets_service, new_file_id, mapping)
     if not args.no_format:
-        print("Applying Arial 9 to written ranges...")
+        print("Applying Arial 9 center alignment to written ranges...")
         apply_arial9_format(sheets_service, new_file_id, mapping)
     print("Data written.")
     try:

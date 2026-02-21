@@ -11,7 +11,7 @@
  */
 async function downloadModuleResults(customerName, moduleResults) {
   const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-  const folderName = `${sanitizeFilename(customerName)}_${timestamp}`;
+  const folderName = `${sanitizeFilename(customerName.replace(/_/g, ' '))}_${timestamp}`;
   
   console.log(`[DownloadManager] Downloading ${moduleResults.length} files to folder: ${folderName}`);
   
@@ -51,13 +51,12 @@ async function downloadModuleResults(customerName, moduleResults) {
 }
 
 /**
- * Sanitize filename to remove invalid characters
+ * Sanitize folder/filename: keep spaces, remove only invalid path characters
  * @param {string} name - Original name
  * @returns {string} Sanitized name
  */
 function sanitizeFilename(name) {
-  // Replace invalid filename characters with underscores
-  return name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').replace(/\s+/g, '_');
+  return String(name).replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim().replace(/_+/g, '_') || 'Unknown_Customer';
 }
 
 /**
