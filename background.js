@@ -219,6 +219,45 @@ async function startExtraction(moduleIds, customerName, tabId) {
         });
     });
 
+    // If Login History was run, trigger login analysis after a delay (server runs script in background)
+    const loginHistoryWasRun = results.some(r => r.moduleId === 'login-history');
+    // #region agent log
+    fetch('http://127.0.0.1:7444/ingest/83f5e77a-0182-41af-9504-9e1ecf738f00',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'99ad26'},body:JSON.stringify({sessionId:'99ad26',location:'background.js:login-analysis-check',message:'Login history run check',data:{moduleIds:results.map(r=>r.moduleId),loginHistoryWasRun},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
+    if (loginHistoryWasRun) {
+      const loginAnalysisDelaySeconds = 15;
+      const loginAnalysisUrl = 'http://127.0.0.1:8765/run-login-analysis';
+      // #region agent log
+      fetch('http://127.0.0.1:7444/ingest/83f5e77a-0182-41af-9504-9e1ecf738f00',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'99ad26'},body:JSON.stringify({sessionId:'99ad26',location:'background.js:before-fetch',message:'About to fetch run-login-analysis',data:{url:loginAnalysisUrl},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+      // #endregion
+      fetch(loginAnalysisUrl, {
+        method: 'POST',
+        mode: 'cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ delaySeconds: loginAnalysisDelaySeconds, folder: folderName })
+      })
+        .then(res => {
+          // #region agent log
+          fetch('http://127.0.0.1:7444/ingest/83f5e77a-0182-41af-9504-9e1ecf738f00',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'99ad26'},body:JSON.stringify({sessionId:'99ad26',location:'background.js:fetch-response',message:'run-login-analysis response',data:{status:res.status,ok:res.ok},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+          // #endregion
+          return res.json();
+        })
+        .then((data) => {
+          // #region agent log
+          fetch('http://127.0.0.1:7444/ingest/83f5e77a-0182-41af-9504-9e1ecf738f00',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'99ad26'},body:JSON.stringify({sessionId:'99ad26',location:'background.js:fetch-ok',message:'Login analysis trigger response',data:data,timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+          // #endregion
+          console.log('[Background] Login analysis trigger response:', data);
+          sendMessageToPopup({ type: 'LOGIN_ANALYSIS_TRIGGERED', success: data.success, message: data.message || '' });
+        })
+        .catch((err) => {
+          // #region agent log
+          fetch('http://127.0.0.1:7444/ingest/83f5e77a-0182-41af-9504-9e1ecf738f00',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'99ad26'},body:JSON.stringify({sessionId:'99ad26',location:'background.js:fetch-catch',message:'Login analysis fetch failed',data:{message:err.message,name:err.name},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+          // #endregion
+          console.warn('[Background] Login analysis trigger failed (is the trigger server running?):', err.message);
+          sendMessageToPopup({ type: 'LOGIN_ANALYSIS_TRIGGERED', success: false, message: 'Trigger server not reached. Run: python google_reporting/upload_trigger_server.py' });
+        });
+    }
+
   } catch (error) {
     console.error('[Background] Extraction process error:', error);
     sendMessageToPopup({

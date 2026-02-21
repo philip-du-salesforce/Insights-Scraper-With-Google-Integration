@@ -335,6 +335,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       el.appendChild(extra);
     }
   }
+  else if (message.type === 'LOGIN_ANALYSIS_TRIGGERED') {
+    const { success, message: msg } = message;
+    const el = document.getElementById('results-summary');
+    if (el) {
+      const extra = document.createElement('p');
+      extra.style.marginTop = '8px';
+      extra.style.fontSize = '12px';
+      extra.innerHTML = success
+        ? '<strong>✅ Login analysis:</strong> Started in background (runs after ~15s; output in the same customer folder).'
+        : '<strong>⚠️ Login analysis:</strong> ' + (msg || 'Not triggered.');
+      el.appendChild(extra);
+    }
+  }
   else if (message.type === 'EXTRACTION_ERROR') {
     progressSection.style.display = 'none';
     showError(message.error);

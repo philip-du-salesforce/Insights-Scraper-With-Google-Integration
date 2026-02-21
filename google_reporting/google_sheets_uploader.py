@@ -19,10 +19,12 @@ Requires: credentials.json (see GOOGLE_OAUTH_SETUP.md) and token.json (created o
 """
 
 import argparse
+import csv
 import re
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 # Add parent so we can import config and scraper_parser
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -33,6 +35,7 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
 import config
 from scraper_parser import parse_scraper_folder, get_template_mapping
@@ -95,6 +98,167 @@ def _quote_sheet(sheet_name: str) -> str:
     if " " in sheet_name or "." in sheet_name or "'" in sheet_name:
         return "'" + sheet_name.replace("'", "''") + "'"
     return sheet_name
+
+
+def load_login_csvs_from_folder(folder_path: Path) -> Dict[str, List[List[str]]]:
+    """
+    Load application_logins.csv, internal_country_logins.csv, failure_analysis.csv
+    from folder (produced by login_analysis.py). Returns data rows only (no header).
+    Keys: application_logins, internal_country_logins, failure_analysis.
+    """
+    out: Dict[str, List[List[str]]] = {}
+    files = [
+        ("application_logins.csv", "application_logins", 4),      # M:P
+        ("internal_country_logins.csv", "internal_country_logins", 4),  # M:P
+        ("failure_analysis.csv", "failure_analysis", 2),           # M:N
+    ]
+    for filename, key, num_cols in files:
+        path = folder_path / filename
+        if not path.is_file():
+            continue
+        rows: List[List[str]] = []
+        try:
+            with open(path, newline="", encoding="utf-8", errors="replace") as f:
+                reader = csv.reader(f)
+                first = True
+                for row in reader:
+                    if first:
+                        first = False
+                        continue
+                    cells = [str(c).strip() for c in row[:num_cols]]
+                    while len(cells) < num_cols:
+                        cells.append("")
+                    rows.append(cells[:num_cols])
+        except Exception:
+            continue
+        if rows:
+            out[key] = rows
+    return out
+
+
+# Chart PNG -> (sheet name for range/merge, sheet name for display)
+LOGIN_CHART_SHEETS = [
+    ("application_logins_chart.png", "1. Application Logins"),
+    ("internal_country_logins_barchart.png", "1. Internal User Logins"),
+    ("failure_analysis_chart.png", "1. Login Failures"),
+]
+
+
+def _upload_png_to_drive(drive_service, png_path: Path, parent_id: str, name: str) -> Optional[str]:
+    """
+    Upload PNG to Drive. Use root (My Drive) so we can try public link; share with anyone-with-link
+    first, else share with SHARE_EMAIL so IMAGE() works for viewers.
+    """
+    try:
+        meta = {"name": name, "parents": [parent_id]}
+        media = MediaFileUpload(str(png_path), mimetype="image/png", resumable=False)
+        f = drive_service.files().create(body=meta, media_body=media, fields="id").execute()
+        file_id = f.get("id")
+        if not file_id:
+            return None
+        try:
+            drive_service.permissions().create(
+                fileId=file_id,
+                body={"type": "anyone", "role": "reader"},
+            ).execute()
+        except Exception:
+            if getattr(config, "SHARE_EMAIL", None):
+                try:
+                    drive_service.permissions().create(
+                        fileId=file_id,
+                        body={"type": "user", "role": "reader", "emailAddress": config.SHARE_EMAIL},
+                    ).execute()
+                except Exception:
+                    pass
+        return file_id
+    except Exception:
+        return None
+
+
+def _image_formula_from_png(png_path: Path, drive_service, parent_id: str, name: str) -> Optional[str]:
+    """Upload PNG to Drive and return =IMAGE(url) formula. Uses parent_id for upload."""
+    file_id = _upload_png_to_drive(drive_service, png_path, parent_id, name)
+    if file_id:
+        return f'=IMAGE("https://drive.google.com/uc?id={file_id}")'
+    return None
+
+
+def insert_chart_images(sheets_service, drive_service, spreadsheet_id: str, folder_path: Path) -> None:
+    """
+    Upload login chart PNGs to Drive and set B4:K29 =IMAGE(url) on each login sheet.
+    Upload to user's My Drive (root) so 'anyone with link' can be set; fall back to
+    spreadsheet folder + SHARE_EMAIL if org blocks public sharing.
+    """
+    meta = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    sheets = {s["properties"]["title"]: s["properties"]["sheetId"] for s in meta.get("sheets", [])}
+    parent_id = "root"
+    merge_requests = []
+    value_updates = []
+    format_requests = []
+    for png_name, sheet_name in LOGIN_CHART_SHEETS:
+        sid = sheets.get(sheet_name)
+        if sid is None:
+            continue
+        png_path = folder_path / png_name
+        if not png_path.is_file():
+            continue
+        formula = _image_formula_from_png(png_path, drive_service, parent_id, png_name)
+        if not formula:
+            continue
+        merge_requests.append({
+            "mergeCells": {
+                "range": {
+                    "sheetId": sid,
+                    "startRowIndex": 3,
+                    "endRowIndex": 29,
+                    "startColumnIndex": 1,
+                    "endColumnIndex": 11,
+                },
+                "mergeType": "MERGE_ALL",
+            },
+        })
+        value_updates.append({
+            "range": "{}!B4".format(_quote_sheet(sheet_name)),
+            "values": [[formula]],
+        })
+        format_requests.append({
+            "repeatCell": {
+                "range": {
+                    "sheetId": sid,
+                    "startRowIndex": 3,
+                    "endRowIndex": 29,
+                    "startColumnIndex": 1,
+                    "endColumnIndex": 11,
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "numberFormat": {"type": "NUMBER", "pattern": "0"},
+                    },
+                },
+                "fields": "userEnteredFormat.numberFormat",
+            },
+        })
+    if merge_requests:
+        try:
+            sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body={"requests": merge_requests},
+            ).execute()
+        except Exception:
+            pass
+    if value_updates:
+        sheets_service.spreadsheets().values().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={"valueInputOption": "USER_ENTERED", "data": value_updates},
+        ).execute()
+    if format_requests:
+        try:
+            sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body={"requests": format_requests},
+            ).execute()
+        except Exception:
+            pass
 
 
 def build_template_batch_updates(spreadsheet_id: str, mapping: dict) -> list:
@@ -211,6 +375,29 @@ def build_template_batch_updates(spreadsheet_id: str, mapping: dict) -> list:
             "values": sharing_settings,
         })
 
+    # 7. Login analysis CSVs (no header) – data only at M5
+    app_logins = mapping.get("application_logins") or []
+    if app_logins:
+        end_row = 4 + len(app_logins)
+        updates.append({
+            "range": "{}!M5:P{}".format(_quote_sheet("1. Application Logins"), end_row),
+            "values": app_logins,
+        })
+    internal_logins = mapping.get("internal_country_logins") or []
+    if internal_logins:
+        end_row = 4 + len(internal_logins)
+        updates.append({
+            "range": "{}!M5:P{}".format(_quote_sheet("1. Internal User Logins"), end_row),
+            "values": internal_logins,
+        })
+    failure_analysis = mapping.get("failure_analysis") or []
+    if failure_analysis:
+        end_row = 4 + len(failure_analysis)
+        updates.append({
+            "range": "{}!M5:N{}".format(_quote_sheet("1. Login Failures"), end_row),
+            "values": failure_analysis,
+        })
+
     return updates
 
 
@@ -281,6 +468,15 @@ def apply_arial9_format(sheets_service, spreadsheet_id: str, mapping: dict) -> N
     sharing = mapping.get("sharing_settings") or []
     if sharing:
         ranges_from_mapping.append(("4. Sharing Settings", 30, 2, 29 + len(sharing), 5))  # C30:E*
+    app_logins = mapping.get("application_logins") or []
+    if app_logins:
+        ranges_from_mapping.append(("1. Application Logins", 5, 12, 4 + len(app_logins), 16))  # M5:P*
+    internal_logins = mapping.get("internal_country_logins") or []
+    if internal_logins:
+        ranges_from_mapping.append(("1. Internal User Logins", 5, 12, 4 + len(internal_logins), 16))  # M5:P*
+    failure_analysis = mapping.get("failure_analysis") or []
+    if failure_analysis:
+        ranges_from_mapping.append(("1. Login Failures", 5, 12, 4 + len(failure_analysis), 14))  # M5:N*
 
     requests = []
     for sheet_name, start_row, start_col, end_row, end_col in ranges_from_mapping:
@@ -321,7 +517,14 @@ def main():
     parser.add_argument(
         "scraper_folder",
         type=str,
+        nargs="?",
+        default=None,
         help="Path to the scraper output folder (e.g. ~/Desktop/NEOS_Life_2026-02-18)",
+    )
+    parser.add_argument(
+        "--update-login-only",
+        action="store_true",
+        help="Only update login tabs (1. Application Logins, 1. Internal User Logins, 1. Login Failures) from CSVs in folder; requires scraper_folder and .spreadsheet_id in folder",
     )
     parser.add_argument(
         "--customer-name",
@@ -347,6 +550,48 @@ def main():
     )
     args = parser.parse_args()
 
+    if getattr(args, "update_login_only", False):
+        if not args.scraper_folder:
+            print("Error: --update-login-only requires scraper_folder path.", file=sys.stderr)
+            sys.exit(1)
+        folder_path = Path(args.scraper_folder).resolve()
+        if not folder_path.is_dir():
+            print(f"Error: Folder not found: {folder_path}", file=sys.stderr)
+            sys.exit(1)
+        sid_path = folder_path / ".spreadsheet_id"
+        if not sid_path.is_file():
+            print(f"Error: .spreadsheet_id not found in {folder_path}. Run full upload first.", file=sys.stderr)
+            sys.exit(1)
+        spreadsheet_id = sid_path.read_text(encoding="utf-8").strip()
+        mapping = load_login_csvs_from_folder(folder_path)
+        if not mapping:
+            print("No login CSVs found in folder; nothing to update.", file=sys.stderr)
+            sys.exit(0)
+        try:
+            creds = get_credentials()
+        except FileNotFoundError as e:
+            print(e, file=sys.stderr)
+            sys.exit(1)
+        sheets_service = build("sheets", "v4", credentials=creds)
+        drive_service = build("drive", "v3", credentials=creds)
+        try:
+            apply_template_updates(sheets_service, spreadsheet_id, mapping)
+            print("Login data updated.")
+            try:
+                insert_chart_images(sheets_service, drive_service, spreadsheet_id, folder_path)
+                print("Login chart images inserted.")
+            except Exception as img_err:
+                print(f"Note: Chart images not inserted: {img_err}", file=sys.stderr)
+        except Exception as e:
+            print(f"Error updating login data: {e}", file=sys.stderr)
+            sys.exit(1)
+        print(f"Open: https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit")
+        return
+
+    if not args.scraper_folder:
+        print("Error: scraper_folder path is required.", file=sys.stderr)
+        sys.exit(1)
+
     try:
         parsed = parse_scraper_folder(args.scraper_folder)
     except Exception as e:
@@ -355,6 +600,10 @@ def main():
 
     customer_name = args.customer_name or parsed["customer_name"]
     mapping = get_template_mapping(parsed)
+    folder_path = Path(parsed["folder_path"])
+    login_csvs = load_login_csvs_from_folder(folder_path)
+    for key, rows in login_csvs.items():
+        mapping[key] = rows
 
     print(f"Customer name: {customer_name}")
     print("Template mapping:")
@@ -382,6 +631,11 @@ def main():
     print(f"Copying template to: {report_title}")
     new_file_id = copy_template(drive_service, config.TEMPLATE_SPREADSHEET_ID, report_title)
     print(f"Created spreadsheet ID: {new_file_id}")
+    spreadsheet_id_path = folder_path / ".spreadsheet_id"
+    try:
+        spreadsheet_id_path.write_text(new_file_id, encoding="utf-8")
+    except Exception:
+        pass
 
     print(f"Sharing with {config.SHARE_EMAIL} as Editor...")
     share_with_email(drive_service, new_file_id, config.SHARE_EMAIL, role="writer")
@@ -399,6 +653,11 @@ def main():
         print("Applying Arial 9 to written ranges...")
         apply_arial9_format(sheets_service, new_file_id, mapping)
     print("Data written.")
+    try:
+        insert_chart_images(sheets_service, drive_service, new_file_id, folder_path)
+        print("Login chart images inserted.")
+    except Exception as img_err:
+        print(f"Note: Chart images not inserted: {img_err}", file=sys.stderr)
 
     print(f"Done. Open: https://docs.google.com/spreadsheets/d/{new_file_id}/edit")
 
