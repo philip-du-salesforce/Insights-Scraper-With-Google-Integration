@@ -563,11 +563,25 @@ def apply_arial9_format(sheets_service, spreadsheet_id: str, mapping: dict) -> N
     if failure_analysis:
         ranges_from_mapping.append(("1. Login Failures", 5, 12, 4 + len(failure_analysis), 14))  # M5:N*
 
+    def _resolve_sheet_id(name_to_id: dict, primary: str, *fallbacks: str):
+        sid = name_to_id.get(primary)
+        if sid is not None:
+            return sid
+        for name in fallbacks:
+            sid = name_to_id.get(name)
+            if sid is not None:
+                return sid
+        return None
+
     requests = []
     for sheet_name, start_row, start_col, end_row, end_col in ranges_from_mapping:
-        if end_row <= start_row or end_col <= start_col:
+        if end_row < start_row or end_col < start_col:
             continue
-        sid = sheet_name_to_id.get(sheet_name)
+        sid = _resolve_sheet_id(
+            sheet_name_to_id,
+            sheet_name,
+            sheet_name.replace("1. ", "").replace("2. ", "").replace("3. ", "").replace("4. ", "").replace("7. ", "").replace("8. ", "").strip(),
+        )
         if sid is None:
             continue
         requests.append({
