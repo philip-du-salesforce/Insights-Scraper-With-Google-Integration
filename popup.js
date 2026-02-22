@@ -389,10 +389,10 @@ selectAllToggle.addEventListener('change', () => {
   });
 });
 
-// Auto-upload checkbox and "Also share with" colleagues (checkboxes)
+// Auto-upload checkbox and "Also share with" dropdown
 const autoUploadCheckbox = document.getElementById('auto-upload-sheets');
 const shareColleaguesWrap = document.getElementById('share-colleagues-wrap');
-const shareColleaguesList = document.getElementById('share-colleagues-list');
+const extraShareSelect = document.getElementById('extra-share-select');
 
 function setShareColleaguesVisible(visible) {
   if (shareColleaguesWrap) {
@@ -401,19 +401,17 @@ function setShareColleaguesVisible(visible) {
 }
 
 function getSelectedShareEmails() {
-  if (!shareColleaguesList) return [];
-  return Array.from(shareColleaguesList.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
+  if (!extraShareSelect || !extraShareSelect.value || !extraShareSelect.value.trim()) return [];
+  return [extraShareSelect.value.trim()];
 }
 
 function getSelectedShareNames() {
-  if (!shareColleaguesList) return [];
-  return Array.from(shareColleaguesList.querySelectorAll('input[type="checkbox"]:checked')).map(cb => {
-    const label = cb.closest('label');
-    const span = label ? label.querySelector('.share-colleague-label') : null;
-    const text = (span && span.textContent) ? span.textContent.trim() : '';
-    const dash = text.indexOf(' – ');
-    return dash >= 0 ? text.slice(0, dash).trim() : text;
-  });
+  if (!extraShareSelect || extraShareSelect.selectedIndex < 0) return [];
+  const opt = extraShareSelect.options[extraShareSelect.selectedIndex];
+  const text = (opt && opt.textContent) ? opt.textContent.trim() : '';
+  if (!text || !opt.value) return [];
+  const dash = text.indexOf(' – ');
+  return [dash >= 0 ? text.slice(0, dash).trim() : text];
 }
 
 function getPrimaryShareName(selectEl) {
@@ -437,8 +435,8 @@ function syncSharePrefsToServer() {
   const primaryEl = document.getElementById('primary-share-select');
   const primary = (primaryEl && primaryEl.value && primaryEl.value.trim()) ? primaryEl.value.trim() : null;
   const primaryName = getPrimaryShareName(primaryEl);
-  const extra = shareColleaguesList ? getSelectedShareEmails() : [];
-  const extraNames = shareColleaguesList ? getSelectedShareNames() : [];
+  const extra = extraShareSelect ? getSelectedShareEmails() : [];
+  const extraNames = extraShareSelect ? getSelectedShareNames() : [];
   const body = { primaryShareEmail: primary, primaryName: primaryName || undefined, shareWith: extra, shareWithNames: extraNames };
   fetch(`${TRIGGER_SERVER_URL}/save-share-prefs`, {
     method: 'POST',
@@ -466,18 +464,17 @@ if (primaryShareSelect) {
 }
 
 if (autoUploadCheckbox) {
-  chrome.storage.local.get(['autoUploadToSheets', 'shareWithEmails', 'primaryShareEmail'], (s) => {
+  chrome.storage.local.get(['autoUploadToSheets', 'shareWithEmails', 'primaryShareEmail', 'extraShareEmail'], (s) => {
     autoUploadCheckbox.checked = s.autoUploadToSheets !== false;
     setShareColleaguesVisible(autoUploadCheckbox.checked);
     if (primaryShareSelect && s.primaryShareEmail) {
       primaryShareSelect.value = s.primaryShareEmail;
     }
     persistPrimaryShare();
-    const stored = Array.isArray(s.shareWithEmails) ? s.shareWithEmails : [];
-    if (shareColleaguesList) {
-      shareColleaguesList.querySelectorAll('input[name="share-colleague"]').forEach(cb => {
-        cb.checked = stored.includes(cb.value);
-      });
+    const storedExtra = (s.extraShareEmail && typeof s.extraShareEmail === 'string') ? s.extraShareEmail : (Array.isArray(s.shareWithEmails) && s.shareWithEmails[0]) ? s.shareWithEmails[0] : '';
+    if (extraShareSelect && storedExtra) {
+      const hasOption = Array.from(extraShareSelect.options).some(opt => opt.value === storedExtra);
+      if (hasOption) extraShareSelect.value = storedExtra;
     }
   });
   autoUploadCheckbox.addEventListener('change', () => {
@@ -487,10 +484,15 @@ if (autoUploadCheckbox) {
   });
 }
 
-if (shareColleaguesList) {
-  shareColleaguesList.addEventListener('change', () => {
-    chrome.storage.local.set({ shareWithEmails: getSelectedShareEmails() });
+if (extraShareSelect) {
+  extraShareSelect.addEventListener('change', () => {
+    const emails = getSelectedShareEmails();
+    chrome.storage.local.set({ extraShareEmail: emails[0] || '', shareWithEmails: emails });
     syncSharePrefsToServer();
+  });
+  window.addEventListener('pagehide', () => {
+    const emails = getSelectedShareEmails();
+    chrome.storage.local.set({ extraShareEmail: emails[0] || '', shareWithEmails: emails });
   });
 }
 

@@ -100,17 +100,18 @@
             </select>
           </div>
           <div id="share-colleagues-wrap" class="share-colleagues-wrap">
-            <span class="share-colleagues-label">Also share with:</span>
-            <div id="share-colleagues-list" class="share-colleagues-list" role="group" aria-label="Select colleagues to share the report with">
-              <label class="share-colleague-item">
-                <input type="checkbox" name="share-colleague" value="hormsby@salesforce.com">
-                <span class="share-colleague-label">Hamish Ormsby – hormsby@salesforce.com</span>
-              </label>
-              <label class="share-colleague-item">
-                <input type="checkbox" name="share-colleague" value="lcarrillo@salesforce.com">
-                <span class="share-colleague-label">Leonard Carrillo – lcarrillo@salesforce.com</span>
-              </label>
-            </div>
+            <label class="share-colleagues-label" for="extra-share-select">Also share with:</label>
+            <select id="extra-share-select" aria-label="Optionally share the new report with one additional person as Editor">
+              <option value="">None</option>
+              <option value="hormsby@salesforce.com">Hamish Ormsby – hormsby@salesforce.com</option>
+              <option value="lcarrillo@salesforce.com">Leonard Carrillo – lcarrillo@salesforce.com</option>
+              <option value="mike.ferguson@salesforce.com">Mike Ferguson – mike.ferguson@salesforce.com</option>
+              <option value="solomon.jones@salesforce.com">Solomon Jones – solomon.jones@salesforce.com</option>
+              <option value="jjurd@salesforce.com">James Jurd – jjurd@salesforce.com</option>
+              <option value="gmarkovski@salesforce.com">Goran Markovski – gmarkovski@salesforce.com</option>
+              <option value="joreskovic@salesforce.com">Jesmond Oreskovic – joreskovic@salesforce.com</option>
+              <option value="joshuaryan@salesforce.com">Joshua Ryan – joshuaryan@salesforce.com</option>
+            </select>
           </div>
           <p class="option-hint" id="auto-upload-hint">Keep the trigger server running: <code>python google_reporting/upload_trigger_server.py</code></p>
         </div>

@@ -275,6 +275,26 @@ main {
   display: none;
 }
 
+.share-colleagues-wrap .share-colleagues-label {
+  margin-bottom: 6px;
+}
+
+#extra-share-select {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background: white;
+  color: var(--text-color);
+  cursor: pointer;
+}
+
+#extra-share-select:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
 .share-colleagues-label {
   display: block;
   font-size: 12px;

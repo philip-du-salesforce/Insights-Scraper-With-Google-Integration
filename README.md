@@ -1,167 +1,129 @@
-# SHC Hammr - Modular Data Scraper
+# Salesforce Insights Scraper with Google Integration
 
-A Chrome extension for extracting data from Salesforce with a modular architecture supporting multiple scraping tasks.
+A Chrome extension for extracting data from Salesforce organizations, plus a Python workflow that uploads results to Google Sheets. Run the scraper from any Salesforce page, then optionally auto-upload to a copied report template shared with your team.
 
 ## Features
 
-### Modular Architecture
-- **Profiles Module**: Extract profile information and count active users with pagination support
-- **Health Check Module**: Placeholder for system health checks (to be implemented)
-- **Storage Module**: Placeholder for storage analysis (to be implemented)
-- **Sensitive Data Module**: Placeholder for sensitive data scanning (to be implemented)
-- **Sandboxes Module**: Placeholder for sandbox information extraction (to be implemented)
-- **Login History Module**: Placeholder for login history extraction (to be implemented)
+### Chrome extension (Salesforce Insights Scraper)
+- **Modular extraction**: Run only the modules you need via checkboxes.
+- **Automatic customer detection**: Identifies customer name from the page (e.g. `blackTabBannerTxt`).
+- **Organized downloads**: Output goes to `CustomerName_YYYY-MM-DD/` (e.g. Desktop or Downloads) as `.txt` and/or `.json` files.
+- **Progress tracking**: Real-time progress for each module.
+- **Extensible design**: Add new modules by extending the base module and registering in the background script.
 
-### Key Capabilities
-- **Automatic Customer Detection**: Identifies customer name from page elements (class: `blackTabBannerTxt`)
-- **Multi-Module Selection**: Choose which modules to run via checkbox toggles
-- **Organized Downloads**: Files downloaded to `CustomerName_YYYY-MM-DD/` folder structure
-- **Progress Tracking**: Real-time progress updates showing current module being processed
-- **Extensible Design**: Easy to add new scraping modules
+### Modules (extension)
+| # | Module | Description |
+|---|--------|-------------|
+| 1 | **Licenses** | License types and counts |
+| 2 | **Profiles** | Profile details and active user counts (with pagination) |
+| 3 | **General Information** | Org-level general info |
+| 4 | **Health Check** | Health check data |
+| 5 | **Storage** | Storage usage |
+| 6 | **Sandboxes** | Sandbox information |
+| 7 | **Sharing Settings** | Sharing settings data |
+| 8 | **Sensitive Data** | Coming soon (currently disabled in UI) |
+| 9 | **Login History** | Download Login History (e.g. CSV) |
+
+### Google Integration
+- **Template-based reports**: Copy a Google Sheet template, rename to *[Customer] Security and Storage Report - [Month] [Year]*, share with chosen users, and fill with scraped data.
+- **Auto-upload**: When the trigger server is running, the extension can trigger the upload automatically when extraction completes (no terminal step).
+- **Configurable sharing**: Choose who to share the new report with (primary + optional extra) via popup or `emails_to_share.json`.
+- **Login analysis**: Optional post-upload step to run login history analysis and update the report. See `google_reporting/README.md` and [SEAMLESS_UPLOAD.md](google_reporting/SEAMLESS_UPLOAD.md).
 
 ## Installation
 
-### Method 1: Load Unpacked (Standard Method)
+### Chrome extension
+
+**Load unpacked**
 
 1. Open Chrome and go to `chrome://extensions/`
-2. Enable "Developer mode" (toggle in top-right corner)
-3. Click "Load unpacked"
-4. Select the folder: `/Users/nadim.diaz/Desktop/Repositories/The SHC Hammr`
+2. Enable **Developer mode** (top-right)
+3. Click **Load unpacked**
+4. Select this project folder (e.g. `Insights-Scraper-With-Google-Integration`)
 
-### Method 2: Using Command Line
+**Optional – command line (separate profile)**
 
 ```bash
 /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
-  --load-extension="/Users/nadim.diaz/Desktop/Repositories/The SHC Hammr" \
+  --load-extension="/path/to/Insights-Scraper-With-Google-Integration" \
   --user-data-dir="$HOME/tmp/chrome-ext-test"
 ```
 
-### Method 3: Use Chrome Canary or Edge
+**If enterprise policies block extensions**: use Chrome Canary, Microsoft Edge (`edge://extensions/`), or Chromium.
 
-If Chrome has enterprise policies blocking extensions:
-- Chrome Canary
-- Microsoft Edge (`edge://extensions/`)
-- Chromium browser
+### Google Sheets integration (optional)
+
+1. One-time: [Google OAuth setup](GOOGLE_OAUTH_SETUP.md) — enable Drive + Sheets APIs, create OAuth Desktop credentials, add `google_reporting/credentials.json`.
+2. Install Python deps: `cd google_reporting && pip install -r requirements.txt`
+3. First run: execute the uploader or trigger server once; complete browser sign-in to create `token.json`.
+4. For **auto-upload** when extraction finishes: start the trigger server and leave it running — see [Seamless upload](google_reporting/SEAMLESS_UPLOAD.md) and [Google reporting README](google_reporting/README.md).
 
 ## Usage
 
-1. **Navigate to a Salesforce page**
-2. **Click the extension icon** in your browser toolbar
-3. **Customer name will be auto-detected** and displayed at the top
-4. **Select modules to run** using the checkboxes:
-   - ☑ Scrap Profiles (extracts profile info and active user counts)
-   - ☐ Scrap Health Check
-   - ☐ Scrap Storage
-   - ☐ Scrap Sensitive Data
-   - ☐ Scrap Sandboxes
-   - ☐ Scrap Login History
-5. **Click "Extract Data"** to begin processing
-6. **Monitor progress** as each module executes
-7. **Files are automatically downloaded** to `CustomerName_YYYY-MM-DD/` folder
+1. **Open a Salesforce page** in Chrome (e.g. Setup or a page that shows the customer banner).
+2. **Click the extension icon** and confirm **Customer** is detected at the top.
+3. **Select modules** with the checkboxes (e.g. Licenses, Profiles, General Info, Health Check, Storage, Sandboxes, Sharing Settings, Login History). Sensitive Data is “Coming soon” and disabled.
+4. **Google Sheets**: Leave **“Auto-upload to Google Sheets when extraction completes”** checked if you want the upload to run after extraction (requires the trigger server to be running). Use the dropdown and optional “Also share with” checkboxes to choose who gets the new report.
+5. **Click “Run Script”** to start extraction.
+6. **Monitor progress** in the popup; files download as each module completes.
+7. **Output**: Files go to `CustomerName_YYYY-MM-DD/` (e.g. on Desktop or in Downloads). If auto-upload is on and the trigger server is running, the Google Sheets upload runs when extraction finishes and the popup shows the result (e.g. link to the new spreadsheet).
 
 ## Output Format
 
-Each module generates a text file in the download folder:
+Each module writes one or more files into the extraction folder. The uploader and parsers expect the numbered `.txt` / `.json` names below:
 
 ```
-CustomerName_2026-01-14/
-├── profiles.txt
-├── health-check.txt
-├── storage.txt
-├── sensitive-data.txt
-├── sandboxes.txt
-└── login-history.txt
+CustomerName_2026-02-22/
+├── 1_licenses.txt (and/or .json)
+├── 2_profiles.txt (and/or .json)
+├── 3_general_info.txt (and/or .json)
+├── 4_health_check.txt (and/or .json)
+├── 5_storage.txt (and/or .json)
+├── 6_sandboxes.txt (and/or .json)
+├── 7_sharing_settings.txt (and/or .json)
+├── 8_login_history.txt (and/or .json)
+└── (optional) sensitive-data.txt / .json
 ```
 
-### Profiles Module Output Example
-
-```
-PROFILE INFORMATION
-================================================================================
-
-Total Profiles Processed: 15
-Generated: 1/14/2026, 3:45:12 PM
-
-================================================================================
-
-1. System Administrator
-------------------------------------------------------------
-   URL: https://...
-   Modify All Data: Yes
-   Run Reports: Yes
-   Export Reports: Yes
-   Active Users: 42
-
-2. Standard User
-------------------------------------------------------------
-   URL: https://...
-   Modify All Data: No
-   Run Reports: Yes
-   Export Reports: No
-   Active Users: 128
-```
+The Google Sheets uploader parses these files and maps data into the report template (Overview, Profiles, Health Check, Storage, Sandboxes, etc.). See `google_reporting/README.md` and `google_reporting/scraper_parser.py`.
 
 ## Architecture
 
-### Module System
+### Extension
 
-```
-modules/
-├── base-module.js           # Abstract base class
-├── module-manager.js        # Module registry and orchestration
-├── profiles-module.js       # Profile scraping (fully implemented)
-├── health-check-module.js   # Placeholder stub
-├── storage-module.js        # Placeholder stub
-├── sensitive-data-module.js # Placeholder stub
-├── sandboxes-module.js      # Placeholder stub
-└── login-history-module.js  # Placeholder stub
-```
+**Modules** (`modules/`):
 
-### Core Files
+- `base-module.js` — base class for all modules  
+- `module-manager.js` — registry and execution order  
+- `shared-functions.js` — shared helpers  
+- `licenses-module.js`, `profiles-module.js`, `general-info-module.js`  
+- `health-check-module.js`, `storage-module.js`, `sandboxes-module.js`  
+- `sharing-settings-module.js`, `sensitive-data-module.js`, `login-history-module.js`
 
-- **manifest.json**: Extension configuration
-- **popup.html**: Extension popup UI with module toggles
-- **popup.js**: UI logic and customer name detection
-- **popup.css**: Modern styling
-- **content.js**: Page interaction and data extraction
-- **background.js**: Module orchestration and download management
-- **download-manager.js**: File download with folder structure
+**Core files**
 
-### Data Flow
+- `manifest.json` — extension config (MV3); host permission for `http://127.0.0.1:8765/*` for trigger server
+- `popup.html` / `popup.js` / `popup.css` — UI, customer detection, module toggles, Google Sheets options
+- `content.js` — page interaction and scraping
+- `background.js` — module orchestration, downloads, optional trigger-server call when extraction completes
+- `download-manager.js` — per-module file download into `CustomerName_YYYY-MM-DD/`
 
-```
-1. Popup opens → Auto-detect customer name
-2. User selects modules → Click "Extract Data"
-3. Background script → Enable selected modules
-4. Module Manager → Execute each module sequentially
-5. Each module → Scrape data → Format as text
-6. Download Manager → Save files to CustomerName_Date/ folder
-7. Popup → Display completion summary
-```
+**Data flow (extension)**
 
-## How Profiles Module Works
+1. Popup opens → customer name detected  
+2. User selects modules and Google options → **Run Script**  
+3. Background enables selected modules and runs them in order  
+4. Each module scrapes → formats → result downloaded (and optionally JSON for uploader)  
+5. When all complete, if auto-upload is on, extension POSTs to trigger server with folder name and share email  
+6. Popup shows completion and, if upload ran, link to the new spreadsheet  
 
-### Step-by-Step Process per Profile:
+### Google reporting (Python)
 
-1. **Extract Profile Links**: Finds all profiles with allowed user licenses from the page
-2. **Open Profile Page**: Navigates to each profile URL in background
-3. **Get Profile Details**: Extracts name, permissions (Modify All Data, Run Reports, Export Reports)
-4. **Click "View Users"**: Finds and clicks the View Users button
-5. **Count Active Users**: Identifies Active column and counts checked users
-6. **Return Results**: Compiles profile data with user count
-
-### Allowed User Licenses:
-- Salesforce
-- Salesforce Platform
-- Customer Community Login
-- Partner Community
-- Guest User License
-- Partner Community Login
-- Customer Community
-- Customer Community Plus
-- Partner Community Plus
-- Customer Community Plus Login
-- Salesforce Integration
+- **upload_trigger_server.py** — HTTP server (default port 8765). `POST /upload` runs the uploader for the given folder; can also run login analysis and update the report.
+- **google_sheets_uploader.py** — OAuth, copy template, rename, share, parse scraper output, write to sheets. See `google_reporting/README.md`.
+- **scraper_parser.py** / **sheet_mapper.py** — parse `CustomerName_YYYY-MM-DD` output and map to template sheets.
+- **config.py** — credentials path, token path, template ID, share email, optional `emails_to_share.json`.
+- **login_analysis.py** — optional post-upload step (e.g. find Login History CSV, run analysis, update sheet).
 
 ## Adding New Modules
 
@@ -203,14 +165,7 @@ moduleManager.registerModule('my-module', new MyNewModule());
 </label>
 ```
 
-4. **Add to popup.js checkbox object**:
-
-```javascript
-const moduleCheckboxes = {
-  // ...
-  myModule: document.getElementById('module-my-module')
-};
-```
+4. **Wire the checkbox in popup.js** (e.g. add to the `moduleCheckboxes` object and to the list of IDs sent in the extraction message).
 
 ## Troubleshooting
 
@@ -225,35 +180,28 @@ const moduleCheckboxes = {
 - Look for "Profile" block with `bPageBlock` class
 
 ### Extension won't load
-- Try command-line method with `--user-data-dir` flag
-- Use Chrome Canary or Edge
-- Check for enterprise policy restrictions
+- Use the command-line method with `--user-data-dir` or try Chrome Canary / Edge if policies block extensions.
 
 ### Download fails
-- Verify downloads permission is granted in manifest
-- Check background service worker console: `chrome://extensions/` → "Inspect views: service worker"
+- Confirm the **downloads** permission in `manifest.json` and the background service worker console (`chrome://extensions/` → Inspect service worker).
+
+### Auto-upload to Google Sheets doesn’t run
+- Start the trigger server: `python google_reporting/upload_trigger_server.py` (default port 8765). Leave it running.
+- Ensure the extraction folder exists under `~/Desktop` or `~/Downloads` with the same name the extension used (e.g. `CustomerName_YYYY-MM-DD`).
+- See [SEAMLESS_UPLOAD.md](google_reporting/SEAMLESS_UPLOAD.md) and [GOOGLE_OAUTH_SETUP.md](GOOGLE_OAUTH_SETUP.md).
 
 ## Technical Details
 
-- **Manifest Version**: 3
-- **Permissions**: activeTab, scripting, tabs, downloads, storage
-- **Processing**: Sequential module execution with progress tracking
-- **Timeout**: 120 seconds per profile (including pagination)
-- **Max Pages**: 100 pages per profile (safety limit)
+- **Manifest**: Version 3; permissions: activeTab, scripting, tabs, downloads, storage; host permission for `http://127.0.0.1:8765/*` for the upload trigger.
+- **Processing**: Modules run sequentially; each module’s output is downloaded (and optionally sent to the trigger server when extraction completes).
+- **Google reporting**: OAuth 2.0 (Drive + Sheets); template copy and share via Drive API; data written via Sheets API. Optional Drive Labels scope for future use.
 
 ## Version History
 
 ### 3.0.0 (Current)
-- Complete modular architecture refactor
-- Multi-module selection with toggles
-- Automatic customer name detection
-- Organized folder structure for downloads
-- Modern UI redesign
-
-### 2.0.0 (Legacy)
-- Profile active users counter
-- Pagination support
-- Excel/TXT export
+- Modular extension: Licenses, Profiles, General Info, Health Check, Storage, Sandboxes, Sharing Settings, Login History (Sensitive Data coming soon).
+- Google Integration: template copy, rename, share, upload scraper output to Sheets; optional auto-upload via trigger server and login analysis.
+- Auto customer detection, organized downloads, “Run Script” UI, progress and result summary.
 
 ## License
 
