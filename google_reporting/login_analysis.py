@@ -28,6 +28,22 @@ except ImportError:
     sys.exit(1)
 
 
+# Chart image dimensions: larger size to show more data and readable labels
+CHART_WIDTH = 1600
+CHART_HEIGHT = 900
+
+# Layout tweaks so bar charts show as many categories as possible (smaller ticks, angled labels)
+def _layout_more_categories(fig, x_tick_angle=-45, tick_font_size=10, bottom_margin=140):
+    fig.update_layout(
+        margin=dict(b=bottom_margin),
+        xaxis=dict(tickangle=x_tick_angle, tickfont=dict(size=tick_font_size)),
+        yaxis=dict(tickfont=dict(size=tick_font_size)),
+        font=dict(size=12),
+        showlegend=True,
+        legend=dict(font=dict(size=11)),
+    )
+
+
 def analyze_logins(df, output_dir=None, open_browser=True):
     """
     Performs the analysis on the login DataFrame and generates visualizations.
@@ -81,11 +97,12 @@ def analyze_logins(df, output_dir=None, open_browser=True):
             color_discrete_map={"Successful_Logins": "green", "Failed_Logins": "red"},
         )
         fig_bar_app.update_layout(xaxis={"categoryorder": "total descending"})
+        _layout_more_categories(fig_bar_app)
 
         bar_chart_app_file = output_dir / "application_logins_chart.html"
         fig_bar_app.write_html(bar_chart_app_file)
         try:
-            fig_bar_app.write_image(output_dir / "application_logins_chart.png", width=700, height=400)
+            fig_bar_app.write_image(output_dir / "application_logins_chart.png", width=CHART_WIDTH, height=CHART_HEIGHT)
         except Exception:
             pass
         _open(bar_chart_app_file)
@@ -147,10 +164,12 @@ def analyze_logins(df, output_dir=None, open_browser=True):
                 color_discrete_map={"Successful_Logins": "green", "Failed_Logins": "red"},
             )
             fig_bar_internal.update_layout(xaxis={"categoryorder": "total descending"})
+            _layout_more_categories(fig_bar_internal)
+
             bar_file = output_dir / "internal_country_logins_barchart.html"
             fig_bar_internal.write_html(bar_file)
             try:
-                fig_bar_internal.write_image(output_dir / "internal_country_logins_barchart.png", width=700, height=400)
+                fig_bar_internal.write_image(output_dir / "internal_country_logins_barchart.png", width=CHART_WIDTH, height=CHART_HEIGHT)
             except Exception:
                 pass
             _open(bar_file)
@@ -216,8 +235,14 @@ def analyze_logins(df, output_dir=None, open_browser=True):
                 color_discrete_map={"Successful_Logins": "green", "Failed_Logins": "red"},
             )
             fig_bar_external.update_layout(xaxis={"categoryorder": "total descending"})
+            _layout_more_categories(fig_bar_external)
+
             bar_file = output_dir / "external_country_logins_barchart.html"
             fig_bar_external.write_html(bar_file)
+            try:
+                fig_bar_external.write_image(output_dir / "external_country_logins_barchart.png", width=CHART_WIDTH, height=CHART_HEIGHT)
+            except Exception:
+                pass
             _open(bar_file)
 
             external_country_logins.drop(columns=["iso_alpha"], inplace=True)
@@ -246,10 +271,12 @@ def analyze_logins(df, output_dir=None, open_browser=True):
             color_continuous_scale=px.colors.sequential.Reds,
         )
         fig_bar_failures.update_layout(xaxis={"categoryorder": "total descending"})
+        _layout_more_categories(fig_bar_failures)
+
         bar_file = output_dir / "failure_analysis_chart.html"
         fig_bar_failures.write_html(bar_file)
         try:
-            fig_bar_failures.write_image(output_dir / "failure_analysis_chart.png", width=700, height=400)
+            fig_bar_failures.write_image(output_dir / "failure_analysis_chart.png", width=CHART_WIDTH, height=CHART_HEIGHT)
         except Exception:
             pass
         _open(bar_file)
