@@ -1,3 +1,5 @@
+# Pin urllib3<2 for macOS LibreSSL (system Python ssl is LibreSSL, incompatible with urllib3 v2+)
+urllib3>=1.26,<2
 google-auth>=2.22.0
 google-auth-oauthlib>=1.0.0
 google-auth-httplib2>=0.1.0

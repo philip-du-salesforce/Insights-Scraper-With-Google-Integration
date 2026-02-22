@@ -241,6 +241,30 @@ main {
   user-select: none;
 }
 
+.primary-share-wrap {
+  margin-top: 12px;
+}
+
+.primary-share-wrap .share-colleagues-label {
+  margin-bottom: 6px;
+}
+
+#primary-share-select {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background: white;
+  color: var(--text-color);
+  cursor: pointer;
+}
+
+#primary-share-select:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
 .share-colleagues-wrap {
   margin-top: 14px;
   padding-top: 12px;

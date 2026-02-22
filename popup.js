@@ -152,12 +152,15 @@ extractDataBtn.addEventListener('click', async () => {
     cancelBtn.style.display = 'inline-block';
     isExtracting = true;
 
-    // Send message to background script to start extraction
+    // Send primary share from dropdown at click time (no async get so value is never lost)
+    const primaryShareEl = document.getElementById('primary-share-select');
+    const primaryShareEmail = (primaryShareEl && primaryShareEl.value && primaryShareEl.value.trim()) ? primaryShareEl.value.trim() : undefined;
     chrome.runtime.sendMessage({
       type: 'START_EXTRACTION',
       modules: selectedModules,
       customerName: customerName,
-      tabId: tab.id
+      tabId: tab.id,
+      primaryShareEmail
     });
 
   } catch (error) {
@@ -402,10 +405,74 @@ function getSelectedShareEmails() {
   return Array.from(shareColleaguesList.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
 }
 
+function getSelectedShareNames() {
+  if (!shareColleaguesList) return [];
+  return Array.from(shareColleaguesList.querySelectorAll('input[type="checkbox"]:checked')).map(cb => {
+    const label = cb.closest('label');
+    const span = label ? label.querySelector('.share-colleague-label') : null;
+    const text = (span && span.textContent) ? span.textContent.trim() : '';
+    const dash = text.indexOf(' – ');
+    return dash >= 0 ? text.slice(0, dash).trim() : text;
+  });
+}
+
+function getPrimaryShareName(selectEl) {
+  if (!selectEl || selectEl.selectedIndex < 0) return null;
+  const opt = selectEl.options[selectEl.selectedIndex];
+  const text = (opt && opt.textContent) ? opt.textContent.trim() : '';
+  const dash = text.indexOf(' – ');
+  return dash >= 0 ? text.slice(0, dash).trim() : text;
+}
+
+const primaryShareSelect = document.getElementById('primary-share-select');
+const TRIGGER_SERVER_URL = 'http://127.0.0.1:8765';
+
+function persistPrimaryShare() {
+  if (primaryShareSelect && primaryShareSelect.value) {
+    chrome.storage.local.set({ primaryShareEmail: primaryShareSelect.value });
+  }
+}
+
+function syncSharePrefsToServer() {
+  const primaryEl = document.getElementById('primary-share-select');
+  const primary = (primaryEl && primaryEl.value && primaryEl.value.trim()) ? primaryEl.value.trim() : null;
+  const primaryName = getPrimaryShareName(primaryEl);
+  const extra = shareColleaguesList ? getSelectedShareEmails() : [];
+  const extraNames = shareColleaguesList ? getSelectedShareNames() : [];
+  const body = { primaryShareEmail: primary, primaryName: primaryName || undefined, shareWith: extra, shareWithNames: extraNames };
+  fetch(`${TRIGGER_SERVER_URL}/save-share-prefs`, {
+    method: 'POST',
+    mode: 'cors',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(() => {}).catch(() => {});
+}
+
+if (primaryShareSelect) {
+  chrome.storage.local.get(['primaryShareEmail'], (s) => {
+    if (s.primaryShareEmail) {
+      primaryShareSelect.value = s.primaryShareEmail;
+    }
+    persistPrimaryShare();
+  });
+  primaryShareSelect.addEventListener('change', () => {
+    persistPrimaryShare();
+    syncSharePrefsToServer();
+  });
+  window.addEventListener('pagehide', () => {
+    persistPrimaryShare();
+    syncSharePrefsToServer();
+  });
+}
+
 if (autoUploadCheckbox) {
-  chrome.storage.local.get(['autoUploadToSheets', 'shareWithEmails'], (s) => {
+  chrome.storage.local.get(['autoUploadToSheets', 'shareWithEmails', 'primaryShareEmail'], (s) => {
     autoUploadCheckbox.checked = s.autoUploadToSheets !== false;
     setShareColleaguesVisible(autoUploadCheckbox.checked);
+    if (primaryShareSelect && s.primaryShareEmail) {
+      primaryShareSelect.value = s.primaryShareEmail;
+    }
+    persistPrimaryShare();
     const stored = Array.isArray(s.shareWithEmails) ? s.shareWithEmails : [];
     if (shareColleaguesList) {
       shareColleaguesList.querySelectorAll('input[name="share-colleague"]').forEach(cb => {
@@ -423,6 +490,7 @@ if (autoUploadCheckbox) {
 if (shareColleaguesList) {
   shareColleaguesList.addEventListener('change', () => {
     chrome.storage.local.set({ shareWithEmails: getSelectedShareEmails() });
+    syncSharePrefsToServer();
   });
 }
 

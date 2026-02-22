@@ -10,3 +10,5 @@ node_modules/
 # Google OAuth (do not commit)
 google_reporting/credentials.json
 google_reporting/token.json
+# Local share list (copy from emails_to_share.example.json)
+google_reporting/emails_to_share.json

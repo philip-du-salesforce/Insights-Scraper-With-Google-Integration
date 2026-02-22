@@ -24,9 +24,14 @@ TEMPLATE_SPREADSHEET_ID = os.environ.get("GOOGLE_TEMPLATE_SPREADSHEET_ID") or "1
 # Email to share the new report with (as Editor)
 SHARE_EMAIL = os.environ.get("GOOGLE_REPORT_SHARE_EMAIL") or "philip.du@salesforce.com"
 
-# OAuth scopes (drive.labels needed to list labels for "Externals Allowed" classification)
+# Optional JSON file for who to share reports with (overrides when CLI/extension don't provide).
+# Format: { "primary": "email@...", "primaryName": "Display Name", "extra": ["email2@..."], "extraNames": ["Name 2"] }
+# primaryName/extraNames are written to Overview F4/F5. Copy emails_to_share.example.json to emails_to_share.json and edit.
+EMAILS_TO_SHARE_PATH = BASE_DIR / "emails_to_share.json"
+
+# OAuth scopes. After adding a new scope, delete token.json and re-run so the app re-authorizes with the new scope.
 SCOPES = [
     "https://www.googleapis.com/auth/drive",
-    "https://www.googleapis.com/auth/drive.labels",
     "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive.labels",
 ]

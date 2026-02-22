@@ -33,14 +33,30 @@ moduleManager.registerModule('login-history', new LoginHistoryModule());
 
 let isExtractionActive = false;
 let currentExtractionJob = null;
+/** Primary share email from the last START_EXTRACTION (used when triggering upload so we don't rely on storage). */
+let pendingPrimaryShareEmail = null;
 
 console.log('[Background] Service worker initialized with module system');
 
 // Listen for messages from popup and content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'START_EXTRACTION') {
-    startExtraction(message.modules, message.customerName, message.tabId);
-    sendResponse({ success: true });
+    const raw = message.primaryShareEmail;
+    if (raw != null && typeof raw === 'string' && raw.trim()) {
+      pendingPrimaryShareEmail = raw.trim();
+    } else {
+      pendingPrimaryShareEmail = null;
+    }
+    const doStart = () => {
+      startExtraction(message.modules, message.customerName, message.tabId, pendingPrimaryShareEmail);
+      sendResponse({ success: true });
+    };
+    if (pendingPrimaryShareEmail) {
+      chrome.storage.local.set({ primaryShareEmail: pendingPrimaryShareEmail }, doStart);
+    } else {
+      doStart();
+    }
+    return true;
   } else if (message.type === 'CANCEL_EXTRACTION') {
     cancelExtraction();
     sendResponse({ success: true });
@@ -63,8 +79,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
  * @param {Array<string>} moduleIds - Array of module IDs to execute
  * @param {string} customerName - Customer name for folder structure
  * @param {number} tabId - Active tab ID
+ * @param {string|null} primaryShareEmail - Email to share the new report with (persisted on job for upload)
  */
-async function startExtraction(moduleIds, customerName, tabId) {
+async function startExtraction(moduleIds, customerName, tabId, primaryShareEmail = null) {
   if (isExtractionActive) {
     console.warn('[Background] Extraction already in progress');
     return;
@@ -73,12 +90,16 @@ async function startExtraction(moduleIds, customerName, tabId) {
   isExtractionActive = true;
   console.log(`[Background] Starting extraction with modules: ${moduleIds.join(', ')}`);
   console.log(`[Background] Customer: ${customerName}`);
+  if (primaryShareEmail) {
+    console.log(`[Background] Primary share email for upload: ${primaryShareEmail}`);
+  }
 
   currentExtractionJob = {
     moduleIds,
     customerName,
     tabId,
-    cancelled: false
+    cancelled: false,
+    primaryShareEmail: primaryShareEmail || null
   };
 
   try {
@@ -196,12 +217,17 @@ async function startExtraction(moduleIds, customerName, tabId) {
     });
 
     // Auto-trigger Google Sheets upload if enabled (trigger server must be running)
-    chrome.storage.local.get(['autoUploadToSheets', 'shareWithEmails'], (storage) => {
+    chrome.storage.local.get(['autoUploadToSheets', 'shareWithEmails', 'primaryShareEmail'], (storage) => {
       const enabled = storage.autoUploadToSheets !== false;
       if (!enabled) return;
       const shareWith = Array.isArray(storage.shareWithEmails) ? storage.shareWithEmails : [];
+      const primaryShareEmail = (currentExtractionJob && currentExtractionJob.primaryShareEmail) ?? pendingPrimaryShareEmail ?? storage.primaryShareEmail ?? null;
+      // #region agent log
+      fetch('http://127.0.0.1:7444/ingest/83f5e77a-0182-41af-9504-9e1ecf738f00',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'99ad26'},body:JSON.stringify({sessionId:'99ad26',location:'background.js:upload-trigger',message:'Upload trigger primary share',data:{primaryShareEmail,folder:folderName},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
+      pendingPrimaryShareEmail = null;
       const triggerUrl = 'http://127.0.0.1:8765/upload';
-      const body = JSON.stringify({ folder: folderName, shareWith });
+      const body = JSON.stringify({ folder: folderName, shareWith, primaryShareEmail });
       fetch(triggerUrl, {
         method: 'POST',
         mode: 'cors',

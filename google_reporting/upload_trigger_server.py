@@ -44,8 +44,47 @@ def _debug_log(location: str, message: str, data: dict, hypothesis_id: str) -> N
 SCRIPT_DIR = Path(__file__).resolve().parent
 UPLOADER_SCRIPT = SCRIPT_DIR / "google_sheets_uploader.py"
 LOGIN_ANALYSIS_SCRIPT = SCRIPT_DIR / "login_analysis.py"
+EMAILS_TO_SHARE_PATH = SCRIPT_DIR / "emails_to_share.json"
 DEFAULT_PORT = 8765
 DEFAULT_LOGIN_ANALYSIS_DELAY_SECONDS = 15
+
+
+def write_emails_to_share(
+    primary: Optional[str],
+    extra: Optional[list],
+    primary_name: Optional[str] = None,
+    extra_names: Optional[list] = None,
+    preserve_primary_if_missing: bool = False,
+) -> None:
+    """Write emails_to_share.json (emails + display names for Overview F4/F5). Replaces file."""
+    extra = list(extra) if isinstance(extra, list) else []
+    extra = [e.strip() for e in extra if isinstance(e, str) and e.strip()]
+    extra_names = list(extra_names) if isinstance(extra_names, list) else []
+    extra_names = [str(n).strip() for n in extra_names if str(n).strip()][: len(extra)]
+    while len(extra_names) < len(extra):
+        extra_names.append("")
+    primary_val = (primary or "").strip() if isinstance(primary, str) else ""
+    primary_name_val = (primary_name or "").strip() if isinstance(primary_name, str) else ""
+    if preserve_primary_if_missing and primary is None and not primary_val and EMAILS_TO_SHARE_PATH.is_file():
+        try:
+            with open(EMAILS_TO_SHARE_PATH, encoding="utf-8") as f:
+                existing = json.load(f)
+            primary_val = (existing.get("primary") or "").strip() if isinstance(existing.get("primary"), str) else ""
+            if not primary_name_val and isinstance(existing.get("primaryName"), str):
+                primary_name_val = (existing.get("primaryName") or "").strip()
+            if not extra_names and isinstance(existing.get("extraNames"), list):
+                extra_names = [str(n).strip() for n in existing["extraNames"] if str(n).strip()][: len(extra)]
+                while len(extra_names) < len(extra):
+                    extra_names.append("")
+        except Exception:
+            pass
+    payload = {"primary": primary_val, "primaryName": primary_name_val, "extra": extra, "extraNames": extra_names}
+    try:
+        with open(EMAILS_TO_SHARE_PATH, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+        print(f"[TriggerServer] Updated {EMAILS_TO_SHARE_PATH.name}: primary={primary_val!r}, primaryName={primary_name_val!r}, extra={len(extra)}")
+    except Exception as e:
+        print(f"[TriggerServer] Could not write {EMAILS_TO_SHARE_PATH.name}: {e}", file=sys.stderr)
 
 
 def run_login_analysis(delay_seconds: int = DEFAULT_LOGIN_ANALYSIS_DELAY_SECONDS, output_dir: Optional[Path] = None) -> None:
@@ -151,14 +190,25 @@ def resolve_folder_path(folder_name: str) -> Optional[Path]:
     return None
 
 
-def run_uploader(folder_path: Path, share_emails: Optional[list] = None) -> Tuple[bool, str, Optional[str]]:
-    """Run google_sheets_uploader.py for the given folder. Optionally share with extra emails. Returns (success, message, spreadsheet_url)."""
+def run_uploader(folder_path: Path, share_emails: Optional[list] = None, primary_share_email: Optional[str] = None) -> Tuple[bool, str, Optional[str]]:
+    """Run google_sheets_uploader.py for the given folder. Optionally share with primary email and extra emails. Returns (success, message, spreadsheet_url)."""
+    # #region agent log
+    _debug_log("upload_trigger_server.py:run_uploader:entry", "run_uploader called", {"primary_share_email": primary_share_email, "folder_path": str(folder_path)}, "H3")
+    # #endregion
     if not UPLOADER_SCRIPT.exists():
+        print(f"[TriggerServer] Error: uploader script not found at {UPLOADER_SCRIPT}")
         return False, "Uploader script not found", None
     cmd = [sys.executable, str(UPLOADER_SCRIPT), str(folder_path)]
+    if primary_share_email and primary_share_email.strip():
+        cmd.extend(["--share-report-with", primary_share_email.strip()])
+        print(f"[TriggerServer] Passing --share-report-with {primary_share_email.strip()!r}")
+    # #region agent log
+    _debug_log("upload_trigger_server.py:run_uploader:cmd", "Uploader command", {"cmd": cmd}, "H3")
+    # #endregion
     if share_emails:
         cmd.extend(["--share-with", ",".join(str(e).strip() for e in share_emails if e)])
     try:
+        print(f"[TriggerServer] Running uploader subprocess (timeout 300s)...")
         result = subprocess.run(
             cmd,
             cwd=str(SCRIPT_DIR),
@@ -168,7 +218,17 @@ def run_uploader(folder_path: Path, share_emails: Optional[list] = None) -> Tupl
         )
         out = (result.stdout or "").strip()
         err = (result.stderr or "").strip()
+        print(f"[TriggerServer] Uploader exited with return code {result.returncode}")
+        if out:
+            print("[TriggerServer] --- Uploader stdout ---")
+            for line in out.splitlines():
+                print(f"  {line}")
+        if err:
+            print("[TriggerServer] --- Uploader stderr ---")
+            for line in err.splitlines():
+                print(f"  {line}")
         if result.returncode != 0:
+            print(f"[TriggerServer] Upload failed (exit code {result.returncode})")
             return False, err or out or "Upload failed", None
         # Try to extract spreadsheet URL from last line (e.g. "Done. Open: https://...")
         url = None
@@ -178,10 +238,13 @@ def run_uploader(folder_path: Path, share_emails: Optional[list] = None) -> Tupl
                     if part.startswith("https://"):
                         url = part.rstrip(".,")
                         break
+        print(f"[TriggerServer] Upload succeeded. URL: {url or '(not captured)'}")
         return True, out or "Upload completed", url
     except subprocess.TimeoutExpired:
+        print("[TriggerServer] Uploader timed out after 300s")
         return False, "Upload timed out", None
     except Exception as e:
+        print(f"[TriggerServer] Uploader subprocess error: {e}")
         return False, str(e), None
 
 
@@ -226,11 +289,38 @@ class UploadHandler(BaseHTTPRequestHandler):
             output_dir = resolve_folder_path(folder_name) if folder_name else None
             self._handle_run_login_analysis(delay, output_dir=output_dir)
             return
+        if path == "/save-share-prefs":
+            primary = None
+            extra = []
+            primary_name = None
+            extra_names = []
+            if "content-length" in self.headers:
+                length = int(self.headers["content-length"])
+                if length:
+                    body = self.rfile.read(length).decode("utf-8", errors="replace")
+                    try:
+                        data = json.loads(body)
+                        if "primaryShareEmail" in data:
+                            primary = data.get("primaryShareEmail") or None
+                        primary_name = data.get("primaryName") or None
+                        extra = data.get("shareWith") or []
+                        if not isinstance(extra, list):
+                            extra = [extra] if extra else []
+                        extra_names = data.get("shareWithNames") or []
+                        if not isinstance(extra_names, list):
+                            extra_names = [extra_names] if extra_names else []
+                    except Exception:
+                        pass
+            write_emails_to_share(primary, extra, primary_name=primary_name, extra_names=extra_names, preserve_primary_if_missing=True)
+            self._send(200, {"success": True, "message": "emails_to_share.json updated"})
+            return
         if path != "/upload" and not path.startswith("/upload?"):
             self._send(404, {"success": False, "message": "Not found"})
             return
+        print("[TriggerServer] Incoming POST /upload")
         folder_name = None
         share_with = []
+        primary_share_email = None
         if "content-length" in self.headers:
             length = int(self.headers["content-length"])
             if length:
@@ -241,12 +331,21 @@ class UploadHandler(BaseHTTPRequestHandler):
                     share_with = data.get("shareWith") or []
                     if not isinstance(share_with, list):
                         share_with = [share_with] if share_with else []
+                    primary_share_email = data.get("primaryShareEmail") or None
+                    if primary_share_email and not isinstance(primary_share_email, str):
+                        primary_share_email = None
+                    # #region agent log
+                    _debug_log("upload_trigger_server.py:POST_upload:parsed", "Parsed upload body", {"primary_share_email": primary_share_email, "raw_primaryShareEmail": data.get("primaryShareEmail"), "folder_name": folder_name}, "H2")
+                    # #endregion
                 except Exception:
                     pass
         if not folder_name and path.startswith("/upload?"):
             qs = parse_qs(parsed.query)
             folder_name = (qs.get("folder") or [""])[0]
-        self._handle_upload(folder_name or "", share_emails=share_with)
+        print(f"[TriggerServer] POST /upload received: folder={folder_name!r}, primary_share_email={primary_share_email!r}")
+        # Do not write emails_to_share.json here — it is updated only by the popup via POST /save-share-prefs.
+        # Otherwise a null primary from the extension would overwrite the user's choice in the JSON.
+        self._handle_upload(folder_name or "", share_emails=share_with, primary_share_email=primary_share_email)
 
     def _handle_run_login_analysis(self, delay_seconds: int, output_dir: Optional[Path] = None):
         """Start login analysis in a background thread and return 202 immediately. If output_dir is set, writes into that folder (e.g. customer folder)."""
@@ -265,15 +364,21 @@ class UploadHandler(BaseHTTPRequestHandler):
             "message": f"Login analysis started in background (will run after {delay_seconds}s delay).",
         })
 
-    def _handle_upload(self, folder_name: str, share_emails: Optional[list] = None):
+    def _handle_upload(self, folder_name: str, share_emails: Optional[list] = None, primary_share_email: Optional[str] = None):
         folder_path = resolve_folder_path(folder_name)
         if not folder_path:
+            print(f"[TriggerServer] Upload failed: folder not found {folder_name!r}")
             self._send(400, {
                 "success": False,
                 "message": f"Folder not found: {folder_name!r}. Check Desktop and Downloads.",
             })
             return
-        success, message, url = run_uploader(folder_path, share_emails=share_emails)
+        print(f"[TriggerServer] Starting uploader for {folder_path} (primary share: {primary_share_email or 'default'})")
+        success, message, url = run_uploader(folder_path, share_emails=share_emails, primary_share_email=primary_share_email)
+        if success:
+            print(f"[TriggerServer] Upload succeeded. Spreadsheet: {url or 'URL not captured'}")
+        else:
+            print(f"[TriggerServer] Upload failed: {message}")
         self._send(200, {
             "success": success,
             "message": message,
