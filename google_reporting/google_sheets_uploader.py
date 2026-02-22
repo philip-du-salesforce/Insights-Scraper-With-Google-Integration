@@ -525,9 +525,11 @@ def build_template_batch_updates(spreadsheet_id: str, mapping: dict) -> list:
         })
     profiles = mapping.get("profiles") or []
     if profiles:
+        # Coerce every cell to string to avoid Google Sheets API 500 (e.g. bool/None)
+        profiles_safe = [[str(c) if c is not None else "" for c in row] for row in profiles]
         updates.append({
-            "range": "{}!B16:G{}".format(_quote_sheet("2. Profiles"), 15 + len(profiles)),
-            "values": profiles,
+            "range": "{}!B16:G{}".format(_quote_sheet("2. Profiles"), 15 + len(profiles_safe)),
+            "values": profiles_safe,
         })
 
     # 3. 3. Health Check: score as number in C4 (e.g. "54%" -> 54)
@@ -650,10 +652,24 @@ def apply_template_updates(sheets_service, spreadsheet_id: str, mapping: dict) -
         "valueInputOption": "USER_ENTERED",
         "data": data,
     }
-    sheets_service.spreadsheets().values().batchUpdate(
-        spreadsheetId=spreadsheet_id,
-        body=body,
-    ).execute()
+    try:
+        sheets_service.spreadsheets().values().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body,
+        ).execute()
+    except Exception as e:
+        # Surface full error so trigger server / CLI show real cause (e.g. 500 from API)
+        err_msg = str(e)
+        try:
+            content = getattr(e, "content", None)
+            if isinstance(content, bytes):
+                err_msg = content.decode("utf-8", errors="replace")
+            elif content:
+                err_msg = str(content)
+        except Exception:
+            pass
+        print(f"[Uploader] Sheets batchUpdate error: {err_msg}", file=sys.stderr)
+        raise
 
 
 def apply_arial9_format(sheets_service, spreadsheet_id: str, mapping: dict) -> None:
@@ -754,6 +770,39 @@ def apply_arial9_format(sheets_service, spreadsheet_id: str, mapping: dict) -> N
                 "fields": "userEnteredFormat(textFormat,horizontalAlignment,verticalAlignment)",
             },
         })
+
+    # 8. Sandboxes: B5:B8 bold white Arial 9 center (header/labels for sandbox licenses)
+    sandbox_sid = _resolve_sheet_id(
+        sheet_name_to_id,
+        "8. Sandboxes",
+        "Sandboxes",
+    )
+    if sandbox_sid is not None:
+        requests.append({
+            "repeatCell": {
+                "range": {
+                    "sheetId": sandbox_sid,
+                    "startRowIndex": 4,
+                    "endRowIndex": 8,
+                    "startColumnIndex": 1,
+                    "endColumnIndex": 2,
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "textFormat": {
+                            "fontFamily": "Arial",
+                            "fontSize": 9,
+                            "bold": True,
+                            "foregroundColor": {"red": 1, "green": 1, "blue": 1},
+                        },
+                        "horizontalAlignment": "CENTER",
+                        "verticalAlignment": "MIDDLE",
+                    },
+                },
+                "fields": "userEnteredFormat(textFormat,horizontalAlignment,verticalAlignment)",
+            },
+        })
+
     if requests:
         try:
             sheets_service.spreadsheets().batchUpdate(

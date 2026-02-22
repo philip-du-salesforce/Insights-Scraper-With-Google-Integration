@@ -27,6 +27,11 @@ class LicensesModule extends BaseModule {
    * @param {Object} context - Contains tabId, customerName, progressCallback, etc.
    */
   async scrape(context) {
+    // #region agent log
+    try {
+      fetch('http://127.0.0.1:7444/ingest/83f5e77a-0182-41af-9504-9e1ecf738f00', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'bc283e' }, body: JSON.stringify({ sessionId: 'bc283e', location: 'licenses-module.js:scrape:entry', message: 'Licenses scrape entered', data: { tabId: context.tabId }, timestamp: Date.now(), hypothesisId: 'H2' }) }).catch(() => {});
+    } catch (e) {}
+    // #endregion
     console.log('[LicensesModule] Starting licenses scraping...');
 
     // Step 1: Navigate to Company Information page
@@ -39,7 +44,12 @@ class LicensesModule extends BaseModule {
         func: searchFunc,
         args: ['Company Information']
       });
-      
+      // #region agent log
+      try {
+        const sr = searchResult?.[0]?.result;
+        fetch('http://127.0.0.1:7444/ingest/83f5e77a-0182-41af-9504-9e1ecf738f00', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'bc283e' }, body: JSON.stringify({ sessionId: 'bc283e', location: 'licenses-module.js:scrape:afterFirstExecuteScript', message: 'first executeScript returned', data: { success: !!sr?.success, error: sr?.error || null }, timestamp: Date.now(), hypothesisId: 'H3' }) }).catch(() => {});
+      } catch (e) {}
+      // #endregion
       if (!searchResult[0]?.result?.success) {
         throw new Error(`Search failed: ${searchResult[0]?.result?.error || 'Unknown error'}`);
       }

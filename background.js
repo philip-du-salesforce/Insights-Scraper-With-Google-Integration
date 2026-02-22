@@ -88,6 +88,11 @@ async function startExtraction(moduleIds, customerName, tabId, primaryShareEmail
   }
 
   isExtractionActive = true;
+  // #region agent log
+  try {
+    fetch('http://127.0.0.1:7444/ingest/83f5e77a-0182-41af-9504-9e1ecf738f00', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'bc283e' }, body: JSON.stringify({ sessionId: 'bc283e', location: 'background.js:startExtraction', message: 'startExtraction called', data: { tabId, firstModuleId: moduleIds[0], totalModules: moduleIds.length, customerName }, timestamp: Date.now(), hypothesisId: 'H1' }) }).catch(() => {});
+  } catch (e) {}
+  // #endregion
   console.log(`[Background] Starting extraction with modules: ${moduleIds.join(', ')}`);
   console.log(`[Background] Customer: ${customerName}`);
   if (primaryShareEmail) {

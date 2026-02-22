@@ -139,7 +139,17 @@ class ModuleManager {
             }
           }
         };
+        // #region agent log
+        try {
+          fetch('http://127.0.0.1:7444/ingest/83f5e77a-0182-41af-9504-9e1ecf738f00', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'bc283e' }, body: JSON.stringify({ sessionId: 'bc283e', location: 'module-manager.js:beforeScrape', message: 'about to call module.scrape', data: { moduleId: id, tabId: context.tabId }, timestamp: Date.now(), hypothesisId: 'H2' }) }).catch(() => {});
+        } catch (e) {}
+        // #endregion
         const data = await module.scrape(enrichedContext);
+        // #region agent log
+        try {
+          fetch('http://127.0.0.1:7444/ingest/83f5e77a-0182-41af-9504-9e1ecf738f00', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'bc283e' }, body: JSON.stringify({ sessionId: 'bc283e', location: 'module-manager.js:afterScrape', message: 'module.scrape resolved', data: { moduleId: id }, timestamp: Date.now(), hypothesisId: 'H5' }) }).catch(() => {});
+        } catch (e) {}
+        // #endregion
 
         // Format data
         const formattedData = module.formatData(data);
@@ -184,6 +194,11 @@ class ModuleManager {
         }
 
       } catch (error) {
+        // #region agent log
+        try {
+          fetch('http://127.0.0.1:7444/ingest/83f5e77a-0182-41af-9504-9e1ecf738f00', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'bc283e' }, body: JSON.stringify({ sessionId: 'bc283e', location: 'module-manager.js:catch', message: 'module threw', data: { moduleId: id, errorMessage: error?.message, errorName: error?.name }, timestamp: Date.now(), hypothesisId: 'H5' }) }).catch(() => {});
+        } catch (e) {}
+        // #endregion
         console.error(`[ModuleManager] Module ${id} failed:`, error);
         
         const result = {
