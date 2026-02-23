@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Salesforce Insights Scraper",
+  "name": "Salesforce Insights Scraper with Google Integration",
   "version": "3.0.0",
   "description": "Comprehensive data extraction and reporting tool for Salesforce organizations",
   "permissions": [

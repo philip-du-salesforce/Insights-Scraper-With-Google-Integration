@@ -191,17 +191,19 @@ class SheetMapper:
     def sharing_settings_from_json(module_data: dict) -> List[List[str]]:
         """4. Sharing Settings C30:E* = [Object, Default Internal Access, Default External Access]."""
         data = module_data.get("7_sharing_settings") or {}
-        rows = data.get("rows") if isinstance(data, dict) else []
+        if not isinstance(data, dict):
+            return []
+        # Accept "rows" or "Rows" (different serialization/casing)
+        rows = data.get("rows") or data.get("Rows") or []
         if not isinstance(rows, list):
             return []
         out = []
         for r in rows:
             if isinstance(r, dict):
-                out.append([
-                    _safe(r.get("object")),              # column C
-                    _safe(r.get("defaultInternalAccess")),  # column D
-                    _safe(r.get("defaultExternalAccess")),  # column E
-                ])
+                obj = _safe(r.get("object") or r.get("Object"))
+                internal = _safe(r.get("defaultInternalAccess") or r.get("defaultInternal") or r.get("Default Internal Access"))
+                external = _safe(r.get("defaultExternalAccess") or r.get("defaultExternal") or r.get("Default External Access"))
+                out.append([obj, internal, external])
             elif isinstance(r, (list, tuple)):
                 out.append([_safe(r[j]) if j < len(r) else "" for j in range(3)])
         return out

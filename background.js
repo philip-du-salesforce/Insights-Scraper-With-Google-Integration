@@ -178,6 +178,18 @@ async function startExtraction(moduleIds, customerName, tabId, primaryShareEmail
 
           console.log(`[Background] ✓✓✓ Downloaded: ${filepath} (ID: ${downloadId})`);
 
+          // Also download .txt when we have formatted data (e.g. sharing settings) so uploader can fall back to .txt if JSON rows are empty
+          if (result.data && result.moduleId !== 'login-history') {
+            try {
+              const txtPath = `${folderName}/${result.filename}.txt`;
+              const txtUrl = `data:text/plain;charset=utf-8,${encodeURIComponent(result.data)}`;
+              await chrome.downloads.download({ url: txtUrl, filename: txtPath, saveAs: false, conflictAction: 'uniquify' });
+              console.log(`[Background] Also downloaded: ${result.filename}.txt`);
+            } catch (e) {
+              console.warn('[Background] Could not download .txt fallback:', e);
+            }
+          }
+
           sendMessageToPopup({
             type: 'MODULE_COMPLETED',
             moduleId: result.moduleId,

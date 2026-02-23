@@ -93,6 +93,16 @@ def parse_scraper_folder(folder_path: Union[str, Path]) -> dict:
             try:
                 with open(json_path, encoding="utf-8") as f:
                     module_data[stem] = json.load(f)
+                # When JSON has empty "rows" (e.g. sharing settings), merge in tables from .txt so legacy parser can use them
+                if stem == "7_sharing_settings" and isinstance(module_data[stem], dict):
+                    rows = module_data[stem].get("rows")
+                    if isinstance(rows, list) and len(rows) == 0 and txt_path.exists():
+                        try:
+                            txt_parsed = _parse_single_file(txt_path)
+                            if txt_parsed.get("tables"):
+                                module_data[stem]["tables"] = txt_parsed["tables"]
+                        except Exception:
+                            pass
             except (json.JSONDecodeError, OSError):
                 if txt_path.exists():
                     module_data[stem] = _parse_single_file(txt_path)
@@ -429,6 +439,19 @@ def get_template_mapping(parsed: dict) -> Dict[str, Any]:
             return jv
         return lv
 
+    sharing_settings = _choose("sharing_settings") or []
+    # When JSON has empty rows and no legacy tables, try loading 7_sharing_settings.txt directly
+    if not sharing_settings and parsed.get("folder_path"):
+        txt_path = Path(parsed["folder_path"]) / "7_sharing_settings.txt"
+        if txt_path.is_file():
+            try:
+                txt_parsed = _parse_single_file(txt_path)
+                if txt_parsed.get("tables"):
+                    synthetic = {"module_data": {"7_sharing_settings": {"tables": txt_parsed["tables"]}}}
+                    sharing_settings = parse_sharing_settings_for_template(synthetic)
+            except Exception:
+                pass
+
     return {
         "overview": _choose("overview") or [],
         "profiles": _choose("profiles") or [],
@@ -440,7 +463,7 @@ def get_template_mapping(parsed: dict) -> Dict[str, Any]:
         "storage_usage": _choose("storage_usage") or [],
         "sandbox_licenses": _choose("sandbox_licenses") or [],
         "sandboxes": _choose("sandboxes") or [],
-        "sharing_settings": _choose("sharing_settings") or [],
+        "sharing_settings": sharing_settings,
     }
 
 

@@ -54,6 +54,18 @@ import config
 from scraper_parser import parse_scraper_folder, get_template_mapping
 
 DEBUG_LOG_PATH = Path(__file__).resolve().parent.parent / ".cursor" / "debug-99ad26.log"
+SESSION_LOG_PATH = Path(__file__).resolve().parent.parent / ".cursor" / "debug-bc283e.log"
+
+
+def _session_log(location: str, message: str, data: dict, hypothesis_id: str) -> None:
+    """Write one NDJSON line to session debug log (debug-bc283e.log)."""
+    try:
+        SESSION_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        import time
+        with open(SESSION_LOG_PATH, "a") as f:
+            f.write(__import__("json").dumps({"sessionId": "bc283e", "location": location, "message": message, "data": data, "timestamp": int(time.time() * 1000), "hypothesisId": hypothesis_id}) + "\n")
+    except Exception:
+        pass
 
 
 def _debug_log(location: str, message: str, data: dict, hypothesis_id: str) -> None:
@@ -484,12 +496,60 @@ def insert_chart_images(sheets_service, drive_service, spreadsheet_id: str, fold
             pass
 
 
-def build_template_batch_updates(spreadsheet_id: str, mapping: dict) -> list:
+def _resolve_sheet_names(sheets_service, spreadsheet_id: str) -> Dict[str, str]:
+    """
+    Fetch actual sheet titles from the spreadsheet and return a map from logical name to actual title.
+    Enables templates that use "Profiles" instead of "2. Profiles", "Health Check" instead of "3. Health Check", etc.
+    """
+    meta = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    titles = [s.get("properties", {}).get("title", "") for s in meta.get("sheets", [])]
+    logical_to_actual = {}
+    for t in titles:
+        t_strip = t.strip()
+        t_lower = t_strip.lower()
+        if t_lower == "overview":
+            logical_to_actual["Overview"] = t
+        elif t_strip == "2. Profiles":
+            logical_to_actual["2. Profiles"] = t
+        elif "profiles" in t_lower and "2. Profiles" not in logical_to_actual:
+            logical_to_actual["2. Profiles"] = t
+        elif t_strip == "3. Health Check":
+            logical_to_actual["3. Health Check"] = t
+        elif "health check" in t_lower and "2" not in t_strip and logical_to_actual.get("3. Health Check") is None:
+            logical_to_actual["3. Health Check"] = t
+        elif t_strip == "Health Check 2":
+            logical_to_actual["Health Check 2"] = t
+        elif "health check" in t_lower and "2" in t_strip and logical_to_actual.get("Health Check 2") is None:
+            logical_to_actual["Health Check 2"] = t
+        elif "storage" in t_lower:
+            logical_to_actual["7. Storage Usage"] = t
+        elif "sandbox" in t_lower:
+            logical_to_actual["8. Sandboxes"] = t
+        elif "sharing" in t_lower:
+            logical_to_actual["4. Sharing Settings"] = t
+        elif "application" in t_lower and "login" in t_lower:
+            logical_to_actual["1. Application Logins"] = t
+        elif "internal" in t_lower and "login" in t_lower:
+            logical_to_actual["1. Internal User Logins"] = t
+        elif "failure" in t_lower or "login failure" in t_lower:
+            logical_to_actual["1. Login Failures"] = t
+    for t in titles:
+        if t and t not in logical_to_actual.values():
+            logical_to_actual[t] = t
+    return logical_to_actual
+
+
+def build_template_batch_updates(spreadsheet_id: str, mapping: dict, sheet_name_map: Optional[Dict[str, str]] = None) -> list:
     """
     Build list of value update dicts for spreadsheets.values.batchUpdate.
     Each entry: {"range": "Sheet!A1:B2", "values": [[...], [...]]}.
-    Sheet names must match template: Overview, 2. Profiles, Health Check 2, 7. Storage Usage, 8. Sandboxes.
+    If sheet_name_map is provided, use it to resolve logical sheet names to actual titles.
     """
+    def _sheet(name: str) -> str:
+        if sheet_name_map and name in sheet_name_map:
+            return sheet_name_map[name]
+        return name
+
     updates = []
 
     # 1. Overview: C4=Account Name, C5=Org ID, C6=Location, C7=Edition; F4=Primary share, F5=Extra share
@@ -499,7 +559,7 @@ def build_template_batch_updates(spreadsheet_id: str, mapping: dict) -> list:
         while len(vals) < 4:
             vals.append([""])
         updates.append({
-            "range": "{}!C4:C7".format(_quote_sheet("Overview")),
+            "range": "{}!C4:C7".format(_quote_sheet(_sheet("Overview"))),
             "values": vals,
         })
     overview_primary = (mapping.get("overview_primary_share") or "").strip()
@@ -509,7 +569,7 @@ def build_template_batch_updates(spreadsheet_id: str, mapping: dict) -> list:
     else:
         overview_extra = (overview_extra or "").strip()
     updates.append({
-        "range": "{}!F4:F5".format(_quote_sheet("Overview")),
+        "range": "{}!F4:F5".format(_quote_sheet(_sheet("Overview"))),
         "values": [[overview_primary], [overview_extra]],
     })
 
@@ -520,15 +580,18 @@ def build_template_batch_updates(spreadsheet_id: str, mapping: dict) -> list:
         c4 = str(saml_enabled) if saml_enabled is not None else ""
         c5 = str(saml_setting_names) if saml_setting_names is not None else ""
         updates.append({
-            "range": "{}!C4:C5".format(_quote_sheet("2. Profiles")),
+            "range": "{}!C4:C5".format(_quote_sheet(_sheet("2. Profiles"))),
             "values": [[c4], [c5]],
         })
     profiles = mapping.get("profiles") or []
     if profiles:
-        # Coerce every cell to string to avoid Google Sheets API 500 (e.g. bool/None)
-        profiles_safe = [[str(c) if c is not None else "" for c in row] for row in profiles]
+        # Coerce every cell to string; truncate to Sheets cell limit (50k chars) to avoid 500
+        max_cell = 50000
+        profiles_safe = []
+        for row in profiles:
+            profiles_safe.append([(str(c) if c is not None else "")[:max_cell] for c in row])
         updates.append({
-            "range": "{}!B16:G{}".format(_quote_sheet("2. Profiles"), 15 + len(profiles_safe)),
+            "range": "{}!B16:G{}".format(_quote_sheet(_sheet("2. Profiles")), 15 + len(profiles_safe)),
             "values": profiles_safe,
         })
 
@@ -546,12 +609,12 @@ def build_template_batch_updates(spreadsheet_id: str, mapping: dict) -> list:
                     score_num = None
         if score_num is not None:
             updates.append({
-                "range": "{}!C4".format(_quote_sheet("3. Health Check")),
+                "range": "{}!C4".format(_quote_sheet(_sheet("3. Health Check"))),
                 "values": [[score_num]],
             })
         else:
             updates.append({
-                "range": "{}!C4".format(_quote_sheet("3. Health Check")),
+                "range": "{}!C4".format(_quote_sheet(_sheet("3. Health Check"))),
                 "values": [[score_str]],
             })
 
@@ -563,7 +626,7 @@ def build_template_batch_updates(spreadsheet_id: str, mapping: dict) -> list:
         if health:
             end_row = 3 + len(health)
             updates.append({
-                "range": "{}!B4:F{}".format(_quote_sheet("Health Check 2"), end_row),
+                "range": "{}!B4:F{}".format(_quote_sheet(_sheet("Health Check 2")), end_row),
                 "values": health,
             })
 
@@ -571,7 +634,7 @@ def build_template_batch_updates(spreadsheet_id: str, mapping: dict) -> list:
     storage_overview = mapping.get("storage_overview") or []
     if storage_overview:
         updates.append({
-            "range": "{}!B25:E27".format(_quote_sheet("7. Storage Usage")),
+            "range": "{}!B25:E27".format(_quote_sheet(_sheet("7. Storage Usage"))),
             "values": storage_overview[:3],
         })
 
@@ -580,7 +643,7 @@ def build_template_batch_updates(spreadsheet_id: str, mapping: dict) -> list:
     if storage:
         end_row = 29 + len(storage)
         updates.append({
-            "range": "{}!B30:E{}".format(_quote_sheet("7. Storage Usage"), end_row),
+            "range": "{}!B30:E{}".format(_quote_sheet(_sheet("7. Storage Usage")), end_row),
             "values": storage,
         })
 
@@ -588,7 +651,7 @@ def build_template_batch_updates(spreadsheet_id: str, mapping: dict) -> list:
     sandbox_licenses = mapping.get("sandbox_licenses") or []
     if sandbox_licenses:
         updates.append({
-            "range": "{}!B5:D8".format(_quote_sheet("8. Sandboxes")),
+            "range": "{}!B5:D8".format(_quote_sheet(_sheet("8. Sandboxes"))),
             "values": sandbox_licenses[:4],
         })
 
@@ -597,7 +660,7 @@ def build_template_batch_updates(spreadsheet_id: str, mapping: dict) -> list:
     if sandboxes:
         end_row = 10 + len(sandboxes)
         updates.append({
-            "range": "{}!B11:J{}".format(_quote_sheet("8. Sandboxes"), end_row),
+            "range": "{}!B11:J{}".format(_quote_sheet(_sheet("8. Sandboxes")), end_row),
             "values": sandboxes,
         })
 
@@ -605,31 +668,35 @@ def build_template_batch_updates(spreadsheet_id: str, mapping: dict) -> list:
     sharing_settings = mapping.get("sharing_settings") or []
     if sharing_settings:
         end_row = 29 + len(sharing_settings)  # first data row = 30
+        _range = "{}!C30:E{}".format(_quote_sheet(_sheet("4. Sharing Settings")), end_row)
         updates.append({
-            "range": "{}!C30:E{}".format(_quote_sheet("4. Sharing Settings"), end_row),
+            "range": _range,
             "values": sharing_settings,
         })
+        # #region agent log
+        _session_log("google_sheets_uploader.py:build_updates:sharing", "Sharing settings update added", {"range": _range, "row_count": len(sharing_settings), "resolved_sheet": _sheet("4. Sharing Settings")}, "H3")
+        # #endregion
 
     # 7. Login analysis CSVs (no header) – data only at M5
     app_logins = mapping.get("application_logins") or []
     if app_logins:
         end_row = 4 + len(app_logins)
         updates.append({
-            "range": "{}!M5:P{}".format(_quote_sheet("1. Application Logins"), end_row),
+            "range": "{}!M5:P{}".format(_quote_sheet(_sheet("1. Application Logins")), end_row),
             "values": app_logins,
         })
     internal_logins = mapping.get("internal_country_logins") or []
     if internal_logins:
         end_row = 4 + len(internal_logins)
         updates.append({
-            "range": "{}!M5:P{}".format(_quote_sheet("1. Internal User Logins"), end_row),
+            "range": "{}!M5:P{}".format(_quote_sheet(_sheet("1. Internal User Logins")), end_row),
             "values": internal_logins,
         })
     failure_analysis = mapping.get("failure_analysis") or []
     if failure_analysis:
         end_row = 4 + len(failure_analysis)
         updates.append({
-            "range": "{}!M5:N{}".format(_quote_sheet("1. Login Failures"), end_row),
+            "range": "{}!M5:N{}".format(_quote_sheet(_sheet("1. Login Failures")), end_row),
             "values": failure_analysis,
         })
 
@@ -639,26 +706,45 @@ def build_template_batch_updates(spreadsheet_id: str, mapping: dict) -> list:
 def apply_template_updates(sheets_service, spreadsheet_id: str, mapping: dict) -> None:
     """
     Write all template-mapped data using spreadsheets.values.batchUpdate.
-    Missing values are left blank or 0 by the parser; no crash on missing data.
+    Resolves sheet names from the template so "3. Health Check" / "Health Check" etc. work.
+    Applies non-Profiles updates first, then Profiles in a separate batch so a Profiles 500 does not block Health Check, Sharing, etc.
     """
-    updates = build_template_batch_updates(spreadsheet_id, mapping)
+    sheet_name_map = _resolve_sheet_names(sheets_service, spreadsheet_id)
+    updates = build_template_batch_updates(spreadsheet_id, mapping, sheet_name_map)
     if not updates:
         return
-    data = [
-        {"range": u["range"], "values": u["values"]}
-        for u in updates
-    ]
-    body = {
-        "valueInputOption": "USER_ENTERED",
-        "data": data,
-    }
-    try:
+
+    # Split: Profiles B16:G* in its own batch so one 500 does not block other sheets
+    profile_range_prefix = "!B16:G"
+    updates_rest = []
+    updates_profiles = []
+    for u in updates:
+        if profile_range_prefix in u.get("range", "") and "rofile" in u.get("range", "").lower():
+            updates_profiles.append(u)
+        else:
+            updates_rest.append(u)
+
+    # #region agent log
+    _rest_ranges = [u.get("range", "") for u in updates_rest]
+    _total_cells = sum(len(u.get("values") or []) * max(len(r) for r in (u.get("values") or [])) if u.get("values") else 0 for u in updates_rest)
+    _session_log("google_sheets_uploader.py:apply_template_updates:split", "Batch split", {"updates_rest_count": len(updates_rest), "updates_profiles_count": len(updates_profiles), "rest_ranges": _rest_ranges, "total_cells_rest": _total_cells, "has_sharing_in_rest": any("haring" in r for r in _rest_ranges)}, "H2")
+    # #endregion
+
+    def _run_batch(batch: list) -> None:
+        if not batch:
+            return
+        body = {
+            "valueInputOption": "USER_ENTERED",
+            "data": [{"range": u["range"], "values": u["values"]} for u in batch],
+        }
         sheets_service.spreadsheets().values().batchUpdate(
             spreadsheetId=spreadsheet_id,
             body=body,
         ).execute()
+
+    try:
+        _run_batch(updates_rest)
     except Exception as e:
-        # Surface full error so trigger server / CLI show real cause (e.g. 500 from API)
         err_msg = str(e)
         try:
             content = getattr(e, "content", None)
@@ -668,8 +754,27 @@ def apply_template_updates(sheets_service, spreadsheet_id: str, mapping: dict) -
                 err_msg = str(content)
         except Exception:
             pass
-        print(f"[Uploader] Sheets batchUpdate error: {err_msg}", file=sys.stderr)
+        # #region agent log
+        _session_log("google_sheets_uploader.py:apply_template_updates:batch_rest_failed", "updates_rest batch failed", {"error": err_msg[:500]}, "H2")
+        # #endregion
+        print(f"[Uploader] Sheets batchUpdate error (Overview/Health/Storage/Sharing/etc.): {err_msg}", file=sys.stderr)
         raise
+
+    if updates_profiles:
+        try:
+            _run_batch(updates_profiles)
+        except Exception as e:
+            err_msg = str(e)
+            try:
+                content = getattr(e, "content", None)
+                if isinstance(content, bytes):
+                    err_msg = content.decode("utf-8", errors="replace")
+                elif content:
+                    err_msg = str(content)
+            except Exception:
+                pass
+            print(f"[Uploader] Profiles sheet update failed (other sheets were updated): {err_msg}", file=sys.stderr)
+            # Do not re-raise so format step and completion still run
 
 
 def apply_arial9_format(sheets_service, spreadsheet_id: str, mapping: dict) -> None:
@@ -929,6 +1034,11 @@ def main():
 
     customer_name = args.customer_name or parsed["customer_name"]
     mapping = get_template_mapping(parsed)
+    # #region agent log
+    _raw_7 = (parsed.get("module_data") or {}).get("7_sharing_settings")
+    _rows_raw = _raw_7.get("rows") if isinstance(_raw_7, dict) else None
+    _session_log("google_sheets_uploader.py:after_get_template_mapping", "Mapping built", {"sharing_settings_len": len(mapping.get("sharing_settings") or []), "raw_7_keys": list(_raw_7.keys()) if isinstance(_raw_7, dict) else None, "raw_7_rows_len": len(_rows_raw) if isinstance(_rows_raw, list) else None}, "H1")
+    # #endregion
     folder_path = Path(parsed["folder_path"])
     login_csvs = load_login_csvs_from_folder(folder_path)
     for key, rows in login_csvs.items():
