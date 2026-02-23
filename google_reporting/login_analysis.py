@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Login History Analysis and Map Visualization.
+Login History Analysis.
 
 Used by the Insights Scraper: after the extension triggers a Login History CSV
 download, this script can run (optionally after a delay) to find the CSV,
-analyze it, and produce charts/tables in Login_Analysis_Output/.
+analyze it, and produce CSVs and HTML tables in Login_Analysis_Output/.
 
 Usage:
   python login_analysis.py [--directory DIR] [--delay SECONDS] [--no-browser]
@@ -19,35 +19,17 @@ from pathlib import Path
 # Check for dependencies
 try:
     import pandas as pd
-    import plotly.express as px
     import numpy as np
-    import country_converter as coco
 except ImportError:
     print("Error: One or more required libraries are not installed.")
-    print("Please install them: pip install pandas plotly numpy country_converter")
+    print("Please install them: pip install pandas numpy")
     sys.exit(1)
-
-
-# Chart image dimensions: larger size to show more data and readable labels
-CHART_WIDTH = 1600
-CHART_HEIGHT = 900
-
-# Layout tweaks so bar charts show as many categories as possible (smaller ticks, angled labels)
-def _layout_more_categories(fig, x_tick_angle=-45, tick_font_size=10, bottom_margin=140):
-    fig.update_layout(
-        margin=dict(b=bottom_margin),
-        xaxis=dict(tickangle=x_tick_angle, tickfont=dict(size=tick_font_size)),
-        yaxis=dict(tickfont=dict(size=tick_font_size)),
-        font=dict(size=12),
-        showlegend=True,
-        legend=dict(font=dict(size=11)),
-    )
 
 
 def analyze_logins(df, output_dir=None, open_browser=True):
     """
-    Performs the analysis on the login DataFrame and generates visualizations.
-    If open_browser is False, HTML files are written but not opened in the browser.
+    Performs the analysis on the login DataFrame and writes CSVs and HTML tables.
+    If open_browser is False, HTML table files are written but not opened in the browser.
     """
     if output_dir is None:
         output_dir = "Login_Analysis_Output"
@@ -80,32 +62,6 @@ def analyze_logins(df, output_dir=None, open_browser=True):
             ["Application", "Total Logins", "Successful_Logins", "Failed_Logins"]
         ].sort_values(by="Total Logins", ascending=False)
 
-        application_logins_melted = application_logins.melt(
-            id_vars="Application",
-            value_vars=["Successful_Logins", "Failed_Logins"],
-            var_name="Login_Status",
-            value_name="Number_of_Logins",
-        )
-        fig_bar_app = px.bar(
-            application_logins_melted,
-            x="Application",
-            y="Number_of_Logins",
-            color="Login_Status",
-            barmode="group",
-            title="Number of Logins by Application (Successful vs. Failed)",
-            text_auto=True,
-            color_discrete_map={"Successful_Logins": "green", "Failed_Logins": "red"},
-        )
-        fig_bar_app.update_layout(xaxis={"categoryorder": "total descending"})
-        _layout_more_categories(fig_bar_app)
-
-        bar_chart_app_file = output_dir / "application_logins_chart.html"
-        fig_bar_app.write_html(bar_chart_app_file)
-        try:
-            fig_bar_app.write_image(output_dir / "application_logins_chart.png", width=CHART_WIDTH, height=CHART_HEIGHT)
-        except Exception:
-            pass
-        _open(bar_chart_app_file)
         application_logins.to_csv(output_dir / "application_logins.csv", index=False)
         application_logins.to_html(output_dir / "application_logins_table.html", index=False, border=0)
         _open(output_dir / "application_logins_table.html")
@@ -124,57 +80,13 @@ def analyze_logins(df, output_dir=None, open_browser=True):
                 internal_country_logins["Successful_Logins"]
                 + internal_country_logins["Failed_Logins"]
             )
-            internal_country_logins["iso_alpha"] = coco.convert(
-                names=internal_country_logins["Country"],
-                src="name_short",
-                to="ISO3",
-                not_found=None,
-            )
             internal_country_logins = internal_country_logins.sort_values(
                 by="Total Logins", ascending=False
             )
-
-            fig_map_internal = px.choropleth(
-                internal_country_logins,
-                locations="iso_alpha",
-                color="Total Logins",
-                hover_name="Country",
-                hover_data=["Successful_Logins", "Failed_Logins"],
-                color_continuous_scale=px.colors.sequential.Plasma,
-                title="World Map of Internal Logins",
-            )
-            map_file = output_dir / "internal_country_logins_map.html"
-            fig_map_internal.write_html(map_file)
-            _open(map_file)
-
-            internal_melted = internal_country_logins.melt(
-                id_vars="Country",
-                value_vars=["Successful_Logins", "Failed_Logins"],
-                var_name="Login_Status",
-                value_name="Number_of_Logins",
-            )
-            fig_bar_internal = px.bar(
-                internal_melted,
-                x="Country",
-                y="Number_of_Logins",
-                color="Login_Status",
-                barmode="group",
-                title="Internal Logins by Country (Successful vs. Failed)",
-                text_auto=True,
-                color_discrete_map={"Successful_Logins": "green", "Failed_Logins": "red"},
-            )
-            fig_bar_internal.update_layout(xaxis={"categoryorder": "total descending"})
-            _layout_more_categories(fig_bar_internal)
-
-            bar_file = output_dir / "internal_country_logins_barchart.html"
-            fig_bar_internal.write_html(bar_file)
-            try:
-                fig_bar_internal.write_image(output_dir / "internal_country_logins_barchart.png", width=CHART_WIDTH, height=CHART_HEIGHT)
-            except Exception:
-                pass
-            _open(bar_file)
-
-            internal_country_logins.drop(columns=["iso_alpha"], inplace=True)
+            # Column order for sheet: M=Country, N=Total Logins, O=Successful_Logins, P=Failed_Logins (row 5+)
+            internal_country_logins = internal_country_logins[
+                ["Country", "Total Logins", "Successful_Logins", "Failed_Logins"]
+            ]
             internal_country_logins.to_csv(output_dir / "internal_country_logins.csv", index=False)
             internal_country_logins.to_html(
                 output_dir / "internal_country_logins_table.html", index=False, border=0
@@ -195,57 +107,9 @@ def analyze_logins(df, output_dir=None, open_browser=True):
                 external_country_logins["Successful_Logins"]
                 + external_country_logins["Failed_Logins"]
             )
-            external_country_logins["iso_alpha"] = coco.convert(
-                names=external_country_logins["Country"],
-                src="name_short",
-                to="ISO3",
-                not_found=None,
-            )
             external_country_logins = external_country_logins.sort_values(
                 by="Total Logins", ascending=False
             )
-
-            fig_map_external = px.choropleth(
-                external_country_logins,
-                locations="iso_alpha",
-                color="Total Logins",
-                hover_name="Country",
-                hover_data=["Successful_Logins", "Failed_Logins"],
-                color_continuous_scale=px.colors.sequential.Viridis,
-                title="World Map of External (Community) Logins",
-            )
-            map_file = output_dir / "external_country_logins_map.html"
-            fig_map_external.write_html(map_file)
-            _open(map_file)
-
-            external_melted = external_country_logins.melt(
-                id_vars="Country",
-                value_vars=["Successful_Logins", "Failed_Logins"],
-                var_name="Login_Status",
-                value_name="Number_of_Logins",
-            )
-            fig_bar_external = px.bar(
-                external_melted,
-                x="Country",
-                y="Number_of_Logins",
-                color="Login_Status",
-                barmode="group",
-                title="External Logins by Country (Successful vs. Failed)",
-                text_auto=True,
-                color_discrete_map={"Successful_Logins": "green", "Failed_Logins": "red"},
-            )
-            fig_bar_external.update_layout(xaxis={"categoryorder": "total descending"})
-            _layout_more_categories(fig_bar_external)
-
-            bar_file = output_dir / "external_country_logins_barchart.html"
-            fig_bar_external.write_html(bar_file)
-            try:
-                fig_bar_external.write_image(output_dir / "external_country_logins_barchart.png", width=CHART_WIDTH, height=CHART_HEIGHT)
-            except Exception:
-                pass
-            _open(bar_file)
-
-            external_country_logins.drop(columns=["iso_alpha"], inplace=True)
             external_country_logins.to_csv(output_dir / "external_country_logins.csv", index=False)
             external_country_logins.to_html(
                 output_dir / "external_country_logins_table.html", index=False, border=0
@@ -260,26 +124,6 @@ def analyze_logins(df, output_dir=None, open_browser=True):
         )
         failure_counts.columns = ["Failure Reason", "Count"]
         failure_counts = failure_counts.sort_values(by="Count", ascending=False)
-
-        fig_bar_failures = px.bar(
-            failure_counts,
-            x="Failure Reason",
-            y="Count",
-            title="Breakdown of Login Failure Reasons",
-            text_auto=True,
-            color="Count",
-            color_continuous_scale=px.colors.sequential.Reds,
-        )
-        fig_bar_failures.update_layout(xaxis={"categoryorder": "total descending"})
-        _layout_more_categories(fig_bar_failures)
-
-        bar_file = output_dir / "failure_analysis_chart.html"
-        fig_bar_failures.write_html(bar_file)
-        try:
-            fig_bar_failures.write_image(output_dir / "failure_analysis_chart.png", width=CHART_WIDTH, height=CHART_HEIGHT)
-        except Exception:
-            pass
-        _open(bar_file)
         failure_counts.to_csv(output_dir / "failure_analysis.csv", index=False)
         failure_counts.to_html(output_dir / "failure_analysis_table.html", index=False, border=0)
         _open(output_dir / "failure_analysis_table.html")
@@ -289,7 +133,7 @@ def analyze_logins(df, output_dir=None, open_browser=True):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Analyze Login History CSV and generate charts/tables."
+        description="Analyze Login History CSV and generate CSVs/tables."
     )
     parser.add_argument(
         "--directory",

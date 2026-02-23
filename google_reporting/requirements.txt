@@ -6,7 +6,4 @@ google-auth-httplib2>=0.1.0
 google-api-python-client>=2.100.0
 # For login history analysis (login_analysis.py)
 pandas>=2.0.0
-plotly>=5.0.0
 numpy>=1.24.0
-country-converter>=0.7.0
-kaleido>=0.2.0

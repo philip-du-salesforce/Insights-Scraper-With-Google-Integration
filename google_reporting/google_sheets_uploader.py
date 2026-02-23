@@ -328,18 +328,35 @@ def load_login_csvs_from_folder(folder_path: Path) -> Dict[str, List[List[str]]]
     Load application_logins.csv, internal_country_logins.csv, failure_analysis.csv
     from folder (produced by login_analysis.py). Returns data rows only (no header).
     Keys: application_logins, internal_country_logins, failure_analysis.
+    Internal User Logins sheet: M=Country, N=Total Logins, O=Successful_Logins, P=Failed_Logins (row 5+).
     """
     out: Dict[str, List[List[str]]] = {}
+    # internal_country_logins: map by header so columns land in N,O,P correctly
+    path_internal = folder_path / "internal_country_logins.csv"
+    if path_internal.is_file():
+        try:
+            with open(path_internal, newline="", encoding="utf-8", errors="replace") as f:
+                reader = csv.DictReader(f)
+                # Sheet order: M=Country, N=Total Logins, O=Successful_Logins, P=Failed_Logins
+                want = ["Country", "Total Logins", "Successful_Logins", "Failed_Logins"]
+                rows = []
+                for row in reader:
+                    cells = [str(row.get(h, "")).strip() for h in want]
+                    rows.append(cells)
+                if rows:
+                    out["internal_country_logins"] = rows
+        except Exception:
+            pass
+
     files = [
         ("application_logins.csv", "application_logins", 4),      # M:P
-        ("internal_country_logins.csv", "internal_country_logins", 4),  # M:P
         ("failure_analysis.csv", "failure_analysis", 2),           # M:N
     ]
     for filename, key, num_cols in files:
         path = folder_path / filename
         if not path.is_file():
             continue
-        rows: List[List[str]] = []
+        rows = []
         try:
             with open(path, newline="", encoding="utf-8", errors="replace") as f:
                 reader = csv.reader(f)
@@ -984,11 +1001,6 @@ def main():
             if not getattr(args, "no_format", False):
                 apply_arial9_format(sheets_service, spreadsheet_id, mapping)
             print("Login data updated.")
-            try:
-                insert_chart_images(sheets_service, drive_service, spreadsheet_id, folder_path)
-                print("Login chart images inserted.")
-            except Exception as img_err:
-                print(f"Note: Chart images not inserted: {img_err}", file=sys.stderr)
         except Exception as e:
             print(f"Error updating login data: {e}", file=sys.stderr)
             sys.exit(1)
@@ -999,7 +1011,7 @@ def main():
         print("[Uploader] Error: scraper_folder path is required.", file=sys.stderr)
         sys.exit(1)
 
-    print("[Uploader] Step 1/6: Parsing scraper folder...")
+    print("[Uploader] Step 1/5: Parsing scraper folder...")
     try:
         parsed = parse_scraper_folder(args.scraper_folder)
         print(f"[Uploader]   Parsed folder_path={parsed.get('folder_path')!r}, customer_name={parsed.get('customer_name')!r}")
@@ -1030,7 +1042,7 @@ def main():
     display_name = customer_name.replace("_", " ")
     report_title = f"{display_name} Security and Storage Report - {now.strftime('%B')} {now.year}"
 
-    print("[Uploader] Step 2/6: Loading Google credentials...")
+    print("[Uploader] Step 2/5: Loading Google credentials...")
     try:
         creds = get_credentials()
         print("[Uploader]   Credentials loaded.")
@@ -1041,7 +1053,7 @@ def main():
     drive_service = build("drive", "v3", credentials=creds)
     sheets_service = build("sheets", "v4", credentials=creds)
 
-    print("[Uploader] Step 3/6: Copying template spreadsheet...")
+    print("[Uploader] Step 3/5: Copying template spreadsheet...")
     print(f"  Title: {report_title}")
     try:
         new_file_id = copy_template(drive_service, config.TEMPLATE_SPREADSHEET_ID, report_title)
@@ -1100,7 +1112,7 @@ def main():
     except Exception:
         pass
     # #endregion
-    print("[Uploader] Step 4/6: Sharing spreadsheet...")
+    print("[Uploader] Step 4/5: Sharing spreadsheet...")
     print(f"  Primary editor: {primary_share}")
     try:
         share_with_email(drive_service, new_file_id, primary_share, role="writer")
@@ -1123,7 +1135,7 @@ def main():
     mapping["overview_primary_share"] = primary_display
     mapping["overview_extra_share"] = extra_display
 
-    print("[Uploader] Step 5/6: Writing data to sheets (batchUpdate)...")
+    print("[Uploader] Step 5/5: Writing data to sheets (batchUpdate)...")
     try:
         apply_template_updates(sheets_service, new_file_id, mapping)
     except Exception as e:
@@ -1133,12 +1145,6 @@ def main():
         print("  Applying Arial 9 center alignment...")
         apply_arial9_format(sheets_service, new_file_id, mapping)
     print("  Data written.")
-    print("[Uploader] Step 6/6: Inserting chart images...")
-    try:
-        insert_chart_images(sheets_service, drive_service, new_file_id, folder_path)
-        print("  Chart images inserted.")
-    except Exception as img_err:
-        print(f"  Note: Chart images not inserted: {img_err}", file=sys.stderr)
 
     print("[Uploader] Done.")
     print(f"Open: https://docs.google.com/spreadsheets/d/{new_file_id}/edit")
