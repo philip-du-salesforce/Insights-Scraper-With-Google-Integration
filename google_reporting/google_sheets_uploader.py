@@ -54,18 +54,6 @@ import config
 from scraper_parser import parse_scraper_folder, get_template_mapping
 
 DEBUG_LOG_PATH = Path(__file__).resolve().parent.parent / ".cursor" / "debug-99ad26.log"
-SESSION_LOG_PATH = Path(__file__).resolve().parent.parent / ".cursor" / "debug-bc283e.log"
-
-
-def _session_log(location: str, message: str, data: dict, hypothesis_id: str) -> None:
-    """Write one NDJSON line to session debug log (debug-bc283e.log)."""
-    try:
-        SESSION_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        import time
-        with open(SESSION_LOG_PATH, "a") as f:
-            f.write(__import__("json").dumps({"sessionId": "bc283e", "location": location, "message": message, "data": data, "timestamp": int(time.time() * 1000), "hypothesisId": hypothesis_id}) + "\n")
-    except Exception:
-        pass
 
 
 def _debug_log(location: str, message: str, data: dict, hypothesis_id: str) -> None:
@@ -668,14 +656,10 @@ def build_template_batch_updates(spreadsheet_id: str, mapping: dict, sheet_name_
     sharing_settings = mapping.get("sharing_settings") or []
     if sharing_settings:
         end_row = 29 + len(sharing_settings)  # first data row = 30
-        _range = "{}!C30:E{}".format(_quote_sheet(_sheet("4. Sharing Settings")), end_row)
         updates.append({
-            "range": _range,
+            "range": "{}!C30:E{}".format(_quote_sheet(_sheet("4. Sharing Settings")), end_row),
             "values": sharing_settings,
         })
-        # #region agent log
-        _session_log("google_sheets_uploader.py:build_updates:sharing", "Sharing settings update added", {"range": _range, "row_count": len(sharing_settings), "resolved_sheet": _sheet("4. Sharing Settings")}, "H3")
-        # #endregion
 
     # 7. Login analysis CSVs (no header) – data only at M5
     app_logins = mapping.get("application_logins") or []
@@ -724,12 +708,6 @@ def apply_template_updates(sheets_service, spreadsheet_id: str, mapping: dict) -
         else:
             updates_rest.append(u)
 
-    # #region agent log
-    _rest_ranges = [u.get("range", "") for u in updates_rest]
-    _total_cells = sum(len(u.get("values") or []) * max(len(r) for r in (u.get("values") or [])) if u.get("values") else 0 for u in updates_rest)
-    _session_log("google_sheets_uploader.py:apply_template_updates:split", "Batch split", {"updates_rest_count": len(updates_rest), "updates_profiles_count": len(updates_profiles), "rest_ranges": _rest_ranges, "total_cells_rest": _total_cells, "has_sharing_in_rest": any("haring" in r for r in _rest_ranges)}, "H2")
-    # #endregion
-
     def _run_batch(batch: list) -> None:
         if not batch:
             return
@@ -754,9 +732,6 @@ def apply_template_updates(sheets_service, spreadsheet_id: str, mapping: dict) -
                 err_msg = str(content)
         except Exception:
             pass
-        # #region agent log
-        _session_log("google_sheets_uploader.py:apply_template_updates:batch_rest_failed", "updates_rest batch failed", {"error": err_msg[:500]}, "H2")
-        # #endregion
         print(f"[Uploader] Sheets batchUpdate error (Overview/Health/Storage/Sharing/etc.): {err_msg}", file=sys.stderr)
         raise
 
@@ -1034,11 +1009,6 @@ def main():
 
     customer_name = args.customer_name or parsed["customer_name"]
     mapping = get_template_mapping(parsed)
-    # #region agent log
-    _raw_7 = (parsed.get("module_data") or {}).get("7_sharing_settings")
-    _rows_raw = _raw_7.get("rows") if isinstance(_raw_7, dict) else None
-    _session_log("google_sheets_uploader.py:after_get_template_mapping", "Mapping built", {"sharing_settings_len": len(mapping.get("sharing_settings") or []), "raw_7_keys": list(_raw_7.keys()) if isinstance(_raw_7, dict) else None, "raw_7_rows_len": len(_rows_raw) if isinstance(_rows_raw, list) else None}, "H1")
-    # #endregion
     folder_path = Path(parsed["folder_path"])
     login_csvs = load_login_csvs_from_folder(folder_path)
     for key, rows in login_csvs.items():
